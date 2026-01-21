@@ -1,0 +1,29 @@
+# === Python ignores ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+.env
+.pytest_cache/
+.coverage
+*.log
+
+# === ROS ignores ===
+devel/
+install/
+log/
+*.bag
+.catkin_workspace
+.rosinstall
+
+# === IDE & OS ===
+.vscode/
+.idea/
+*.swp
+.DS_Store
