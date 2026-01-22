@@ -10,7 +10,7 @@ class zedManager:
         self.camera_fps = CAMERA_FPS
         self.zed = sl.Camera()
         self.image_left = sl.Mat()
-        self.image_right = sl.Mat()
+        self.bodies = sl.Bodies()
         self.save_dir = "./zed_image"
         os.makedirs(self.save_dir, exist_ok=True)
         # Open cv2 window
@@ -27,6 +27,7 @@ class zedManager:
         init_params = sl.InitParameters()
         init_params.camera_resolution = sl.RESOLUTION.AUTO  # Use HD720 opr HD1200 video mode, depending on camera type.
         init_params.camera_fps = 30                 # Set camera fps
+        init_params.depth_mode = sl.DEPTH_MODE.NEURAL
         err = self.zed.open(init_params)
         if err != sl.ERROR_CODE.SUCCESS:
             print("[ZED] Camera Open : "+repr(err)+". Exit program.")
@@ -43,14 +44,30 @@ class zedManager:
                 cv2.resizeWindow("ZED Camera", width, height)
                 print(f"[ZED] Window size set to {width}x{height}")
 
+        positional_tracking_parameters = sl.PositionalTrackingParameters()
+        self.zed.enable_positional_tracking(positional_tracking_parameters)
+
+        body_param = sl.BodyTrackingParameters()
+        body_param.enable_tracking = True                # Track people across images flow
+        body_param.enable_body_fitting = True            # Smooth skeleton move
+        body_param.detection_model = sl.BODY_TRACKING_MODEL.HUMAN_BODY_ACCURATE 
+        body_param.body_format = sl.BODY_FORMAT.BODY_34  # Choose the BODY_FORMAT you wish to use
+
+        # Enable Object Detection module
+        self.zed.enable_body_tracking(body_param)
+
     def close_camera(self):
         self.zed.close()
 
     def get_image(self):
         runtime_parameters = sl.RuntimeParameters()
+        body_runtime_param = sl.BodyTrackingRuntimeParameters()
+        body_runtime_param.detection_confidence_threshold = 60
         if self.zed.grab(runtime_parameters) == sl.ERROR_CODE.SUCCESS:
             self.zed.retrieve_image(self.image_left, sl.VIEW.LEFT_BGR)
+            self.zed.retrieve_bodies(self.bodies, body_runtime_param)
             self.time_stamp = self.zed.get_timestamp(sl.TIME_REFERENCE.CURRENT)
+            print(self.bodies.body_list)
             return True
         return False
     
