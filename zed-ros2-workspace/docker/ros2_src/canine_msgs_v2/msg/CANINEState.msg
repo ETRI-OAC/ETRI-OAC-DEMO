@@ -1,0 +1,10 @@
+float64 local_time
+int32 fsm_state
+geometry_msgs/Vector3 global_base_position
+geometry_msgs/Vector3 global_base_velocity
+geometry_msgs/Vector3 global_base_euler_angle
+geometry_msgs/Quaternion global_base_quaternion
+geometry_msgs/Vector3 global_base_angular_velocity
+geometry_msgs/Vector3 body_base_velocity
+geometry_msgs/Vector3 body_base_angular_velocity
+nav_msgs/Odometry odom
