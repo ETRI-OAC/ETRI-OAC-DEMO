@@ -1,0 +1,71 @@
+//
+// Created by ys on 24. 12. 7.
+//
+
+#ifndef CAMEL_QUAD_CAMEL_API_HPP
+#define CAMEL_QUAD_CAMEL_API_HPP
+#include <stdint.h>
+
+enum CONTROL_STATE
+{
+    ROBOT_CONTROL_STOP,
+    ROBOT_CONTROL,
+};
+
+
+enum GAIT_TYPE
+{
+    STAND = 0,
+    TROT_SLOW,
+    PRONKING,
+    BOUNDING,
+    PACING,
+    TROT_VISION,
+    RL_WALK
+};
+
+enum GAIT_COMMAND
+{
+    DESIRED_GAIT_STAND,
+    DESIRED_GAIT_TROT_SLOW,
+    DESIRED_GAIT_PRONKING,
+    DESIRED_GAIT_BOUNDING,
+    DESIRED_GAIT_PACING,
+    DESIRED_GAIT_TROT_VISION
+};
+
+enum FSM
+{
+    FSM_INITIAL,
+    FSM_INITIALIZING,
+    FSM_READY,
+    FSM_STAND_UP,
+    FSM_SIT_DOWN,
+    FSM_EMERGENCY_STOP,
+    FSM_RECOVERY,
+    FSM_STAND,
+    FSM_WALK,
+    FSM_RLWALK,
+    FSM_TROT_STOP,
+    FSM_STAIR,
+    FSM_PRONKING,
+    FSM_BOUNDING,
+    FSM_PACING
+};
+enum LEG_INDEX
+{
+    HR_IDX = 0,
+    HL_IDX,
+    FR_IDX,
+    FL_IDX,
+};
+
+enum JoyBTN {
+    J_A, J_B, J_X, J_Y, J_LB, J_RB,
+    J_BACK, J_START, J_LOGI, J_LJOY, J_RJOY,
+    J_AR_U, J_AR_D, J_AR_R, J_AR_L,
+    NO_OF_JBTN
+};
+
+
+#endif //CAMEL_QUAD_CAMEL_API_HPP
