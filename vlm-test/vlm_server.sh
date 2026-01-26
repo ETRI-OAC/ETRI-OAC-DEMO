@@ -1,0 +1,1 @@
+sudo docker run -it --rm --pull always --runtime=nvidia --network host ghcr.io/nvidia-ai-iot/vllm:latest-jetson-orin vllm serve cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit
