@@ -330,12 +330,7 @@ class ZedImageServer:
                     head_bbox_2d = body.head_bounding_box_2d[:4]
                     head_bbox_values = []
                     for corner in head_bbox_2d:
-                        if hasattr(corner, 'x') and hasattr(corner, 'y'):
-                            head_bbox_values.extend([int(corner.x), int(corner.y)])
-                        elif isinstance(corner, (list, tuple)) and len(corner) >= 2:
-                            head_bbox_values.extend([int(corner[0]), int(corner[1])])
-                        else:
-                            head_bbox_values.extend([0, 0])
+                        head_bbox_values.extend([int(corner[0]), int(corner[1])])
                     body_data += struct.pack("<8I", *head_bbox_values[:8])
                 else:
                     body_data += struct.pack("<8I", *([0] * 8))
