@@ -1,0 +1,14 @@
+<RCC>
+    <qresource prefix="/">
+        <file>icons/disable.png</file>
+        <file>icons/enable.png</file>
+        <file>icons/MODULE_BLACK.png</file>
+        <file>icons/MODULE_BLUE.png</file>
+        <file>icons/green_circle.svg</file>
+        <file>icons/red_circle.svg</file>
+        <file>CAMEL_logo.png</file>
+        <file>ETRI.png</file>
+        <file>icons/power_button_green.png</file>
+        <file>icons/power_button_red.png</file>
+    </qresource>
+</RCC>

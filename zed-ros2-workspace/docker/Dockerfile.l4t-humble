@@ -54,7 +54,7 @@ ENV TZ=Europe/Paris
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone && \ 
   apt-get update && \
   apt-get install --yes lsb-release wget less udev sudo build-essential cmake python3 python3-dev python3-pip python3-wheel python3-serial \
-  git jq libpq-dev zstd usbutils && \    
+  git jq libpq-dev zstd usbutils python3-opencv && \    
   rm -rf /var/lib/apt/lists/*
 
 RUN echo "# R${L4T_MAJOR} (release), REVISION: ${L4T_MINOR}" > /etc/nv_tegra_release && \
@@ -97,6 +97,11 @@ RUN wget https://github.com/ros/xacro/archive/refs/tags/${XACRO_VERSION}.tar.gz 
     
 # Install cython
 RUN python3 -m pip install --upgrade cython
+
+# Upgrade opencv-python
+RUN python3 -m pip install opencv-contrib-python --upgrade --index-url https://pypi.jetson-ai-lab.io/jp6/cu126
+# Downgrade numpy to 1.26.4
+RUN python3 -m pip install numpy==1.26.4 --index-url https://pypi.jetson-ai-lab.io/jp6/cu126
 
 # Build the dependencies and the ZED ROS2 Wrapper
 WORKDIR /root/ros2_ws
