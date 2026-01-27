@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARENT_DIR="$(cd "${SCRIPT_DIR}/../openpath-CANINE-middleware" && pwd)"
+PARENT_DIR="$(cd "${SCRIPT_DIR}/../openpath_CANINE_middleware" && pwd)"
 BUILD_DIR="$(cd "${PARENT_DIR}/build/" && pwd)"
 
 if [ -d "${BUILD_DIR}" ]; then

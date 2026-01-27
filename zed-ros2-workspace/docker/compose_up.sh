@@ -56,7 +56,7 @@ fi
 export DISPLAY=$DISPLAY_ID
 export XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}
 export PROJECT_NAME=$PROJECT_NAME
-
+  
 echo "[*] Final DISPLAY=$DISPLAY"
 echo "[*] XAUTHORITY=$XAUTHORITY"
 
