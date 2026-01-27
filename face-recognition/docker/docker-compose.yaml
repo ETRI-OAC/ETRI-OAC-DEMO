@@ -1,0 +1,28 @@
+services:
+  face-recognition:
+    container_name: face-recognition
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - "/tmp/.X11-unix:/tmp/.X11-unix:ro"
+      - "/dev:/dev"
+      - "../../:/workspace"
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - ROS_DOMAIN_ID=0
+    privileged: true
+    runtime: nvidia
+    network_mode: host
+    ipc: "host"
+    pid: "host"
+    stdin_open: true
+    tty: true
+    command: bash
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
