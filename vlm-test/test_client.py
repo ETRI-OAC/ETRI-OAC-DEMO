@@ -9,68 +9,89 @@ import json
 import time
 import requests
 from pathlib import Path
+from typing import Tuple, Optional, Dict, Any
 
 
-def encode_image(image_path: str) -> str:
-    """이미지를 base64로 인코딩"""
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
-
-
-def query_vllm(image_path: str, prompt: str, api_url: str = "http://localhost:8000", measure_time: bool = False) -> tuple:
+class VLLMClient:
     """
-    vLLM 서버에 이미지와 프롬프트를 전송하여 응답을 받습니다.
-    
-    Args:
-        image_path: 이미지 파일 경로
-        prompt: 질문 프롬프트
-        api_url: vLLM API 서버 URL
-        measure_time: 응답 시간을 측정할지 여부
-    
-    Returns:
-        (API 응답 딕셔너리, 응답 시간(초)) 튜플
+    vLLM 서버 클라이언트
     """
-    # 이미지를 base64로 인코딩
-    base64_image = encode_image(image_path)
     
-    # OpenAI 호환 API 형식으로 요청 구성
-    payload = {
-        "model": "cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit",
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{base64_image}"
+    def __init__(self, api_url: str = "http://localhost:8000", model: str = "cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit",
+                 max_tokens: int = 512, temperature: float = 0.7):
+        """
+        vLLM 클라이언트 초기화
+        
+        Args:
+            api_url: vLLM API 서버 URL
+            model: 사용할 모델 이름
+            max_tokens: 최대 토큰 수
+            temperature: 생성 온도
+        """
+        self.api_url = api_url.rstrip('/')
+        self.model = model
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+    
+    @staticmethod
+    def encode_image(image_path: str) -> str:
+        """이미지를 base64로 인코딩"""
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+    
+    def query(self, image_path: str, prompt: str, measure_time: bool = False) -> Tuple[Dict[str, Any], Optional[float]]:
+        """
+        vLLM 서버에 이미지와 프롬프트를 전송하여 응답을 받습니다.
+        
+        Args:
+            image_path: 이미지 파일 경로
+            prompt: 질문 프롬프트
+            measure_time: 응답 시간을 측정할지 여부
+        
+        Returns:
+            (API 응답 딕셔너리, 응답 시간(초) 또는 None) 튜플
+        """
+        # 이미지를 base64로 인코딩
+        base64_image = self.encode_image(image_path)
+        
+        # OpenAI 호환 API 형식으로 요청 구성
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
                         }
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
-            }
-        ],
-        "max_tokens": 512,
-        "temperature": 0.7
-    }
-    
-    # API 요청 전송
-    start_time = time.time() if measure_time else None
-    response = requests.post(
-        f"{api_url}/v1/chat/completions",
-        json=payload,
-        headers={"Content-Type": "application/json"}
-    )
-    
-    # 응답 확인
-    response.raise_for_status()
-    response_json = response.json()
-    
-    elapsed_time = (time.time() - start_time) if measure_time else None
-    return response_json, elapsed_time
+                    ]
+                }
+            ],
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature
+        }
+        
+        # API 요청 전송
+        start_time = time.time() if measure_time else None
+        response = requests.post(
+            f"{self.api_url}/v1/chat/completions",
+            json=payload,
+            headers={"Content-Type": "application/json"}
+        )
+        
+        # 응답 확인
+        response.raise_for_status()
+        response_json = response.json()
+        
+        elapsed_time = (time.time() - start_time) if measure_time else None
+        return response_json, elapsed_time
 
 
 def main():
@@ -95,13 +116,16 @@ def main():
     print(f"🔥 Warmup 횟수: {warmup_count}")
     print("-" * 60)
     
+    # 클라이언트 초기화
+    client = VLLMClient(api_url=api_url)
+    
     try:
         # Warmup 단계
         print(f"🔥 Warmup 시작 ({warmup_count}회)...")
         warmup_start = time.time()
         for i in range(warmup_count):
             try:
-                response, _ = query_vllm(str(image_path), prompt, api_url, measure_time=False)
+                response, _ = client.query(str(image_path), prompt, measure_time=False)
                 print(f"  [{i+1}/{warmup_count}] Warmup 완료", end='\r')
             except Exception as e:
                 print(f"\n❌ Warmup {i+1}번째 실패: {e}")
@@ -112,7 +136,7 @@ def main():
         
         # 실제 측정 단계
         print("📤 측정 요청 전송 중...")
-        response, elapsed_time = query_vllm(str(image_path), prompt, api_url, measure_time=True)
+        response, elapsed_time = client.query(str(image_path), prompt, measure_time=True)
         
         # 응답 파싱
         if "choices" in response and len(response["choices"]) > 0:
