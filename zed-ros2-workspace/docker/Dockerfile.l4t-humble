@@ -132,9 +132,9 @@ RUN git config --global --add safe.directory /root/workspace
 WORKDIR /root/workspace
 
 # Setup environment variables 
-COPY ros_entrypoint_jetson.sh /sbin/ros_entrypoint.sh
-RUN sudo chmod 755 /sbin/ros_entrypoint.sh
+COPY entrypoint.sh /sbin/entrypoint.sh
+RUN sudo chmod 755 /sbin/entrypoint.sh
 
-ENTRYPOINT ["/sbin/ros_entrypoint.sh"]
+ENTRYPOINT ["/sbin/entrypoint.sh"]
 CMD ["bash"]
 
