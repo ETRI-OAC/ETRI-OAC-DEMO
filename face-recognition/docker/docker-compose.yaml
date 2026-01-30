@@ -4,13 +4,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: face-recognition:latest
     volumes:
       - "/tmp/.X11-unix:/tmp/.X11-unix:ro"
       - "/dev:/dev"
-      - "../../:/workspace"
+      - "../../:/root/workspace"
     environment:
-      - DISPLAY=${DISPLAY:-:0}
-      - ROS_DOMAIN_ID=0
+      - DISPLAY=${DISPLAY}
     privileged: true
     runtime: nvidia
     network_mode: host
