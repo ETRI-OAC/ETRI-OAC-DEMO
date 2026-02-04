@@ -1,5 +1,7 @@
-source /opt/ros/humble/install/setup.bash
-source ~/home/openpath-CANINE-middleware/ros_pkg/install/setup.bash
+source "/opt/ros/$ROS_DISTRO/install/setup.bash"
+source "/opt/ros/$ROS_DISTRO/setup.bash"
+source "/root/ros2_ws/install/local_setup.bash"
+
 ros2 run rplidar_ros rplidar_node \
 --ros-args \
 -p serial_port:=/dev/ttyUSB1 \

@@ -1,4 +1,7 @@
 #!/bin/bash
+source "/opt/ros/$ROS_DISTRO/install/setup.bash"
+source "/opt/ros/$ROS_DISTRO/setup.bash"
+source "/root/ros2_ws/install/local_setup.bash"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PARENT_DIR="$(cd "${SCRIPT_DIR}/../openpath_CANINE_middleware" && pwd)"
