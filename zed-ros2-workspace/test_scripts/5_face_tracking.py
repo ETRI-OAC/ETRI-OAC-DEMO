@@ -45,7 +45,7 @@ class faceTracking:
         face_bbox_2d = np.array(bodies[0]['head_bounding_box_2d'])
         x1 = face_bbox_2d[0][0]
         x2 = face_bbox_2d[1][0]
-        y1 = face_bbox_2d[1][1]
+        y1 = face_bbox_2d[1][1] - 50 # HEURISTIC: add 50 pixels to the top of the face
         y2 = face_bbox_2d[2][1]
         x1_c = np.clip(x1, 1, self.image_width-1)
         x2_c = np.clip(x2, 1, self.image_width-1)
