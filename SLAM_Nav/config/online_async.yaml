@@ -1,0 +1,21 @@
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: false
+    mode: mapping
+  
+    scan_topic: /scan
+
+    map_update_interval: 0.05
+    transform_timeout: 0.3
+    transform_publish_period: 0.01
+
+    minimum_travel_distance: 0.05
+    minimum_travel_heading: 0.05
+
+    min_laser_range: 0.3
+    max_laser_range: 20.0
+
+    base_frame: base_footprint
+    odom_frame: odom
+    map_frame: map
+
