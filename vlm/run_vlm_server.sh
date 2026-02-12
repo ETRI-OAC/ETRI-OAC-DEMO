@@ -17,4 +17,4 @@ else
   echo "First run: creating container and downloading model..."
   docker run -it --name "$CONTAINER_NAME" --pull always --runtime=nvidia --network host \
     "$IMAGE" $VLLM_CMD
-fi  
+fi
