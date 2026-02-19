@@ -1,0 +1,266 @@
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+import time
+import numpy as np
+from dynamixel_sdk import *
+import rclpy
+from rclpy.node import Node
+from tf2_ros import TransformBroadcaster
+from std_msgs.msg import Float64MultiArray
+from geometry_msgs.msg import TransformStamped
+from utils.transformations import rotation_matrix_to_quaternion
+
+
+DXL_MOVING_STATUS_THRESHOLD = 20
+TORQUE_DISABLE = 0
+TORQUE_ENABLE = 1
+ADDR_TORQUE_ENABLE = 64
+ADDR_GOAL_POSITION = 116
+ADDR_HOMING_OFFSET = 20
+ADDR_PRESENT_POSITION = 132
+ADDR_POSITION_P_GAIN = 84
+ADDR_BUS_WATCHDOG = 98
+
+class pantiltManager(Node):
+    def __init__(self):
+        super().__init__('pantilt_node')
+        self.error_status = 0
+        self.position = np.zeros(2)
+        self.position_raw = np.zeros(2)
+        self.position_offset_deg = np.array([180.0, 45.0])
+        self.axis = np.array([1.0, 1.0])
+
+        # Dynamixel IDs
+        self.DXL_YAW = 101
+        self.DXL_PITCH = 102
+        self.DXL_IDX = [0, 1]
+        self.DXL_IDS = [self.DXL_YAW, self.DXL_PITCH]
+        
+        DEVICENAME = '/dev/ttyUSB0'
+        PROTOCOL_VERSION = 2.0
+        self.portHandler = PortHandler(DEVICENAME)
+        self.packetHandler = PacketHandler(PROTOCOL_VERSION)
+        
+        self.LIMITS = {
+            0: {"min_deg": -45.0, "max_deg": 45.0},
+            1: {"min_deg": -35.0, "max_deg": 30.0},
+        }
+
+        self.open_dxl()
+        self.enable_torque()
+
+        self.set_position_p_gain(0, 400)
+        self.set_position_p_gain(1, 600)
+
+        self.sync_write = GroupSyncWrite(self.portHandler, self.packetHandler, ADDR_GOAL_POSITION, 4)
+        self.bulk_read = GroupBulkRead(self.portHandler, self.packetHandler)
+        self.sync_read = GroupSyncRead(self.portHandler, self.packetHandler, ADDR_PRESENT_POSITION, 4)
+        self.sync_read.addParam(101)
+        self.sync_read.addParam(102)
+
+        self.reset_error()
+        self.set_position([0, 0])
+
+        self.publisher_pantilt_state = self.create_publisher(
+            Float64MultiArray,
+            'pantilt_state',
+            10
+        )
+        self.subscriber_pantilt_command = self.create_subscription(
+            Float64MultiArray,
+            'pantilt_command',
+            self.pantilt_command_callback,
+            10
+        )
+        self.tf_broadcaster = TransformBroadcaster(self)
+
+        self.timer_pantilt_state = self.create_timer(0.02, self.timer_callback_pantilt_state) # 50 Hz state
+        self.publisher_pantilt_state
+        self.subscriber_pantilt_command
+        
+        print("[PANTILT NODE] Initialized")
+
+    def timer_callback_pantilt_state(self):
+        self.read_position()
+        self.publish_pantilt_state()
+        self.publish_base_footprint_to_camera_tf()
+    
+    def publish_pantilt_state(self):
+        msg = Float64MultiArray()
+        msg.data = self.position.tolist()
+        self.publisher_pantilt_state.publish(msg)
+    
+    def pantilt_command_callback(self, msg):
+        self.set_position([msg.data[0], msg.data[1]])
+
+    def publish_base_footprint_to_camera_tf(self):
+        """Publish TF from base_footprint to camera_left using current pan-tilt pose."""
+        T = self.get_T_base2cam_left()
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = 'base_footprint'
+        t.child_frame_id = 'camera_left'
+        t.transform.translation.x = float(T[0, 3])
+        t.transform.translation.y = float(T[1, 3])
+        t.transform.translation.z = float(T[2, 3])
+        q = rotation_matrix_to_quaternion(T[0:3, 0:3])
+        t.transform.rotation.x = float(q[0])
+        t.transform.rotation.y = float(q[1])
+        t.transform.rotation.z = float(q[2])
+        t.transform.rotation.w = float(q[3])
+        self.tf_broadcaster.sendTransform(t)
+    
+    def __del__(self):
+        self.disable_torque()
+        self.close_dxl()
+
+    def open_dxl(self):
+        BAUDRATE = 2000000
+        if self.portHandler.openPort():
+            print("[PANTILT MOTOR] Port opened successfully")
+        else:
+            print("Failed to open the port")
+            quit()
+
+        if self.portHandler.setBaudRate(BAUDRATE):
+            print("[PANTILT MOTOR] Baudrate set successfully")
+        else:
+            print("Failed to change the baudrate")
+            quit()
+    
+    def close_dxl(self):
+        try:
+            self.portHandler.closePort()
+        except Exception as e:
+            print(f"[PANTILT MOTOR] closePort failed: {e}")
+
+    def enable_torque(self):
+        for dxl_id in self.DXL_IDS:
+            dxl_comm_result, dxl_error = self.packetHandler.write1ByteTxRx(
+                self.portHandler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE
+            )
+            if dxl_comm_result != COMM_SUCCESS:
+                print("%s" % self.packetHandler.getTxRxResult(dxl_comm_result))
+            elif dxl_error != 0:
+                print("%s" % self.packetHandler.getRxPacketError(dxl_error))
+            else:
+                print(f"[PANTILT MOTOR] motor-{dxl_id} torque enabled")
+
+    def disable_torque(self):
+        for dxl_id in self.DXL_IDS:
+            try:
+                self.packetHandler.write1ByteTxRx(self.portHandler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
+            except Exception as e:
+                print(f"[PANTILT MOTOR] Torque disable failed for motor-{dxl_id}: {e}")
+    
+    def set_position_p_gain(self, idx, p_gain):
+        if not (0 <= p_gain <= 16383):
+            raise ValueError("[PANTILT MOTOR] p_gain out of range (0~16383)")
+        dxl_comm_result, dxl_error = self.packetHandler.write4ByteTxRx(self.portHandler, self.DXL_IDS[idx], ADDR_POSITION_P_GAIN, p_gain)
+            
+    def set_position(self, pantilt_goal_position):
+        min_d = self.LIMITS[0]["min_deg"]
+        max_d = self.LIMITS[0]["max_deg"]
+        target_deg = pantilt_goal_position[0]
+        clamped_pan = max(min(target_deg, max_d), min_d)
+        goal_pos_pan = self.deg_to_pos(clamped_pan * self.axis[0] + self.position_offset_deg[0])
+
+        min_d = self.LIMITS[1]["min_deg"]
+        max_d = self.LIMITS[1]["max_deg"]
+        target_deg = pantilt_goal_position[1]
+        clamped_tilt = max(min(target_deg, max_d), min_d)
+        goal_pos_tilt = self.deg_to_pos(clamped_tilt * self.axis[1] + self.position_offset_deg[1])
+
+        self.syncwrite_goalpos({101: goal_pos_pan, 102: goal_pos_tilt})
+
+    def syncwrite_goalpos(self, id_pos_dict):
+        self.sync_write.clearParam()
+        for dxl_id, goal in id_pos_dict.items():
+            goal &= 0xFFFFFFFF
+            param = bytes([
+                goal & 0xFF,
+                (goal >> 8) & 0xFF,
+                (goal >> 16) & 0xFF,
+                (goal >> 24) & 0xFF,
+            ])
+            if not self.sync_write.addParam(dxl_id, param):
+                raise RuntimeError(f"addParam failed: {dxl_id}")
+
+        dxl_comm_result = self.sync_write.txPacket()
+        if dxl_comm_result != 0:
+            raise RuntimeError(self.packetHandler.getTxRxResult(dxl_comm_result))
+    
+    def read_position(self):
+        self.syncread_present_pos()
+        return self.position.copy()
+
+    def syncread_present_pos(self, ids=(101,102)):
+        dxl_comm_result = self.sync_read.txRxPacket()
+        if dxl_comm_result != 0:
+            raise RuntimeError(self.sync_read.packetHandler.getTxRxResult(dxl_comm_result))
+
+        for idx in self.DXL_IDX:
+            if not self.sync_read.isAvailable(self.DXL_IDS[idx], ADDR_PRESENT_POSITION, 4):
+                raise RuntimeError(f"Data not available: id={self.DXL_IDS[idx]}")
+            dxl_present_position = self.sync_read.getData(self.DXL_IDS[idx], ADDR_PRESENT_POSITION, 4)
+            self.position_raw[idx] = self.pos_to_deg(dxl_present_position)   # 절대 각도(오프셋 포함)
+            self.position[idx] = self.axis[idx] * (self.position_raw[idx] - self.position_offset_deg[idx])
+
+    def reset_error(self, reboot: bool = True, clear_bus_watchdog: bool = True,
+                    off_time_sec: float = 0.2, torque_on_after: bool = True):
+        self.disable_torque()
+        time.sleep(max(0.0, off_time_sec))
+
+        if clear_bus_watchdog:
+            for dxl_id in self.DXL_IDS:
+                self.packetHandler.write1ByteTxRx(self.portHandler, dxl_id, ADDR_BUS_WATCHDOG, 0)
+
+        if reboot:
+            for dxl_id in self.DXL_IDS:
+                self.packetHandler.reboot(self.portHandler, dxl_id)
+            time.sleep(0.3)  # reboot 직후 짧게 대기
+
+        if torque_on_after:
+            self.enable_torque()
+
+    def deg_to_pos(self, deg):
+        return int(deg * 4096 / 360)
+
+    def pos_to_deg(self, pos):
+        return pos * 360 / 4096
+
+    def get_T_base2cam_left(self):
+        self.syncread_present_pos()
+        T_base2pantilt_yaw = np.eye(4)
+        T_pantilt_yaw2pantilt_pitch = np.eye(4)
+        T_pantilt_pitch2CAMLeft = np.eye(4)
+        
+        yaw = self.position[0] * np.pi / 180.0
+        R_yaw = np.array([[np.cos(yaw), -np.sin(yaw), 0.0],
+                        [np.sin(yaw),  np.cos(yaw), 0.0],
+                        [          0.0,            0.0, 1.0]])
+        T_base2pantilt_yaw[0:3,0:3] = R_yaw
+        T_base2pantilt_yaw[0:3,3] = np.array([0.2705, 0.0, 0.078])
+
+        pitch = self.position[1] * np.pi / 180.0
+        R_pitch = np.array([[ np.cos(pitch), 0.0,  np.sin(pitch)],
+                            [             0.0, 1.0,              0.0],
+                            [-np.sin(pitch), 0.0,  np.cos(pitch)]])
+        T_pantilt_yaw2pantilt_pitch[0:3,0:3] = R_pitch
+
+        T_pantilt_pitch2CAMLeft[0:3,3] = np.array([0.042, 0.025, 0.046])
+
+        T_base2CAMLeft = T_base2pantilt_yaw @ T_pantilt_yaw2pantilt_pitch @ T_pantilt_pitch2CAMLeft
+        return T_base2CAMLeft
+    
+def main():
+    rclpy.init()
+    node = pantiltManager()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()

@@ -168,3 +168,27 @@ class pantiltManager():
 
     def pos_to_deg(self, pos):
         return pos * 360 / 4096
+
+    def get_T_base2cam_left(self):
+        self.syncread_present_pos()
+        T_base2pantilt_yaw = np.eye(4)
+        T_pantilt_yaw2pantilt_pitch = np.eye(4)
+        T_pantilt_pitch2CAMLeft = np.eye(4)
+        
+        yaw = self.position[0] * np.pi / 180.0
+        R_yaw = np.array([[np.cos(yaw), -np.sin(yaw), 0.0],
+                        [np.sin(yaw),  np.cos(yaw), 0.0],
+                        [          0.0,            0.0, 1.0]])
+        T_base2pantilt_yaw[0:3,0:3] = R_yaw
+        T_base2pantilt_yaw[0:3,3] = np.array([0.2705, 0.0, 0.078])
+
+        pitch = self.position[1] * np.pi / 180.0
+        R_pitch = np.array([[ np.cos(pitch), 0.0,  np.sin(pitch)],
+                            [             0.0, 1.0,              0.0],
+                            [-np.sin(pitch), 0.0,  np.cos(pitch)]])
+        T_pantilt_yaw2pantilt_pitch[0:3,0:3] = R_pitch
+
+        T_pantilt_pitch2CAMLeft[0:3,3] = np.array([0.042, 0.025, 0.046])
+
+        T_base2CAMLeft = T_base2pantilt_yaw @ T_pantilt_yaw2pantilt_pitch @ T_pantilt_pitch2CAMLeft
+        return T_base2CAMLeft
