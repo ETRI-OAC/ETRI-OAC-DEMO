@@ -37,7 +37,7 @@ IMAGE_MAGIC = 0x5A494D47  # 'ZIMG'
 # [1] magic = 0x5A424F44  ("ZBOD" for sanity check) - uint32
 # [2] frame_counter (uint32)
 # [3] num_bodies (uint32)
-# [4] body_format (uint32) - keypoints per body (18, 34, or 38)
+# [4] body_format (uint32) - keypoints per body (18, 34, or 38) # TODO: only 35 is supported for now
 # Body data follows: each body is serialized with fixed + variable size fields
 BODY_HEADER_BYTES = 5 * 4  # 5 uint32s (lock + 4 data fields)
 BODY_MAGIC = 0x5A424F44  # 'ZBOD'
@@ -126,15 +126,18 @@ class ZedClient:
         
         offsets['head_position'] = offset
         offset += 12  # 3 floats
+
+        offsets['head_orientation'] = offset
+        offset += 16  # 4 floats (quaternion xyzw)
         
         offsets['num_keypoints'] = offset
         offset += 4  # uint32
         
         offsets['keypoints_2d'] = offset
-        offset += 18 * 8  # 18 keypoints * 2 floats * 4 bytes
+        offset += 34 * 8  # 34 keypoints * 2 floats * 4 bytes
         
         offsets['keypoints_3d'] = offset
-        offset += 18 * 12  # 18 keypoints * 3 floats * 4 bytes
+        offset += 34 * 12  # 34 keypoints * 3 floats * 4 bytes
         
         offsets['body_size'] = offset  # Total size per body
         
@@ -375,23 +378,26 @@ class ZedClient:
             
             # Head position (3 floats) - direct unpack
             body['head_position'] = list(struct.unpack("<fff", buf[body_offset + self._body_field_offsets['head_position']:body_offset + self._body_field_offsets['head_position'] + 12]))
+
+            # Head orientation (4 floats) - direct unpack
+            body['head_orientation'] = list(struct.unpack("<ffff", buf[body_offset + self._body_field_offsets['head_orientation']:body_offset + self._body_field_offsets['head_orientation'] + 16]))
             
             # Number of keypoints
             num_kp = struct.unpack("<I", buf[body_offset + self._body_field_offsets['num_keypoints']:body_offset + self._body_field_offsets['num_keypoints'] + 4])[0]
             body['num_keypoints'] = num_kp
             
-            # Keypoints 2D (18 keypoints, 2 floats each) - direct unpack using pre-calculated offsets
+            # Keypoints 2D (34 keypoints, 2 floats each) - direct unpack using pre-calculated offsets
             kp_2d_offset = body_offset + self._body_field_offsets['keypoints_2d']
             keypoints_2d = []
-            for j in range(18):
+            for j in range(34):
                 kp = struct.unpack("<ff", buf[kp_2d_offset + j*8:kp_2d_offset + j*8 + 8])
                 keypoints_2d.append(list(kp))
             body['keypoints_2d'] = keypoints_2d[:num_kp] if num_kp > 0 else []
             
-            # Keypoints 3D (18 keypoints, 3 floats each) - direct unpack using pre-calculated offsets
+            # Keypoints 3D (34 keypoints, 3 floats each) - direct unpack using pre-calculated offsets
             kp_3d_offset = body_offset + self._body_field_offsets['keypoints_3d']
             keypoints_3d = []
-            for j in range(18):
+            for j in range(34):
                 kp = struct.unpack("<fff", buf[kp_3d_offset + j*12:kp_3d_offset + j*12 + 12])
                 keypoints_3d.append(list(kp))
             body['keypoints_3d'] = keypoints_3d[:num_kp] if num_kp > 0 else []
@@ -462,7 +468,7 @@ def main() -> None:
                 image_cv = image.copy()  # Work on a copy to avoid modifying original
                 if bodies is not None and len(bodies) > 0:
                     # Get body format from first body (assuming all bodies have same format)
-                    body_format = 18  # Default, can be extracted from body data if needed
+                    body_format = 34  # Default, can be extracted from body data if needed
                     try:
                         image_cv = visualize_bodies_2d(image_cv, bodies, body_format=body_format)
                         print(f"[CLIENT] Detected {len(bodies)} person(s)")

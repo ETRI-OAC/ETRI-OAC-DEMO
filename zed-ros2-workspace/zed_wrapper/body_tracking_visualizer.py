@@ -42,7 +42,46 @@ BODY_18_BONES = [
 ]
 
 # BODY_34 skeleton connections (if needed in future)
-BODY_34_BONES = []  # TODO: Add if BODY_34 format is needed
+# BODY_34 skeleton connections (bone pairs)
+# Each tuple contains (start_keypoint_index, end_keypoint_index)
+BODY_34_BONES = [
+    (0, 1),    # PELVIS - NAVAL_SPINE
+    (1, 2),    # NAVAL_SPINE - CHEST_SPINE
+    (2, 4),    # CHEST_SPINE - LEFT_CLAVICLE
+    (4, 5),    # LEFT_CLAVICLE - LEFT_SHOULDER
+    (5, 6),    # LEFT_SHOULDER - LEFT_ELBOW
+    (6, 7),    # LEFT_ELBOW - LEFT_WRIST
+    (7, 8),    # LEFT_WRIST - LEFT_HAND
+    (8, 9),    # LEFT_HAND - LEFT_HANDTIP
+    (7, 10),   # LEFT_WRIST - LEFT_THUMB
+    (2, 11),   # CHEST_SPINE - RIGHT_CLAVICLE
+    (11, 12),  # RIGHT_CLAVICLE - RIGHT_SHOULDER
+    (12, 13),  # RIGHT_SHOULDER - RIGHT_ELBOW
+    (13, 14),  # RIGHT_ELBOW - RIGHT_WRIST
+    (14, 15),  # RIGHT_WRIST - RIGHT_HAND
+    (15, 16),  # RIGHT_HAND - RIGHT_HANDTIP
+    (14, 17),  # RIGHT_WRIST - RIGHT_THUMB
+    (0, 18),   # PELVIS - LEFT_HIP
+    (18, 19),  # LEFT_HIP - LEFT_KNEE
+    (19, 20),  # LEFT_KNEE - LEFT_ANKLE
+    (20, 21),  # LEFT_ANKLE - LEFT_FOOT
+    (0, 22),   # PELVIS - RIGHT_HIP
+    (22, 23),  # RIGHT_HIP - RIGHT_KNEE
+    (23, 24),  # RIGHT_KNEE - RIGHT_ANKLE
+    (24, 25),  # RIGHT_ANKLE - RIGHT_FOOT
+    (2, 3),    # CHEST_SPINE - NECK
+    (3, 26),   # NECK - HEAD
+    (26, 27),  # HEAD - NOSE
+    (27, 28),  # NOSE - LEFT_EYE
+    (28, 29),  # LEFT_EYE - LEFT_EAR
+    (27, 30),  # NOSE - RIGHT_EYE
+    (30, 31),  # RIGHT_EYE - RIGHT_EAR
+    (20, 32),  # LEFT_ANKLE - LEFT_HEEL
+    (24, 33),  # RIGHT_ANKLE - RIGHT_HEEL
+    (32, 21),  # LEFT_HEEL - LEFT_FOOT
+    (33, 25),  # RIGHT_HEEL - RIGHT_FOOT
+]
+
 
 # BODY_38 skeleton connections (if needed in future)
 BODY_38_BONES = []  # TODO: Add if BODY_38 format is needed
@@ -210,7 +249,7 @@ def render_body_info(
 def visualize_bodies_2d(
     image: np.ndarray,
     bodies: List[Dict[str, Any]],
-    body_format: int = 18,
+    body_format: int = 34,
     img_scale: Optional[List[float]] = None,
     draw_skeleton: bool = True,
     draw_bbox: bool = True,

@@ -80,7 +80,7 @@ class faceTracking:
     
     def overlay_bodies_on_image(self, image, bodies):
         if bodies is not None and len(bodies) > 0:
-            image = visualize_bodies_2d(image, bodies, body_format=18)
+            image = visualize_bodies_2d(image, bodies, body_format=34)
         return image
     
     def overlay_face_recognition_result(self, image, face_bbox, result):
@@ -130,11 +130,14 @@ def main():
         while True:
             image = face_tracking.zed_client.grab_image()
             bodies = face_tracking.zed_client.grab_bodies()
-            if bodies is not None and len(bodies) > 0:
+            T_base2cam_left = face_tracking.pantilt.get_T_base2cam_left()
+            
+            if bodies is not None and len(bodies) > 0: # if face detected
                 face_image, bbox = face_tracking.crop_face(image, bodies)
-                result,_ = face_tracking.face_recognition_client.recognize(face_image, measure_time=False)
-                image = face_tracking.overlay_bodies_on_image(image, bodies)
-                image = face_tracking.overlay_face_recognition_result(image, bbox, result)
+                if face_image is not None: # if face is in the image (not out of bounds)
+                    result,_ = face_tracking.face_recognition_client.recognize(face_image, measure_time=False)
+                    image = face_tracking.overlay_bodies_on_image(image, bodies)
+                    image = face_tracking.overlay_face_recognition_result(image, bbox, result)
                 face_tracking.move_pantilt(bodies)
             
             face_tracking.imshow(image)

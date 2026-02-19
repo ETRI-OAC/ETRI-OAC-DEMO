@@ -41,13 +41,21 @@ IMAGE_LOCK_LOCKED = 1
 # [1] magic = 0x5A424F44  ("ZBOD" for sanity check) - uint32
 # [2] frame_counter (uint32)
 # [3] num_bodies (uint32)
-# [4] body_format (uint32) - keypoints per body (18, 34, or 38)
+# [4] body_format (uint32) - keypoints per body (18, 34, or 38) # TODO: only 34 is supported for now
 # Body data follows: each body is serialized with fixed + variable size fields
 BODY_HEADER_BYTES = 5 * 4  # 5 uint32s (lock + 4 data fields)
 BODY_MAGIC = 0x5A424F44  # 'ZBOD'
 BODY_LOCK_UNLOCKED = 0
 BODY_LOCK_LOCKED = 1
 
+def quaternion_multiply(q1, q2):
+    x1, y1, z1, w1 = q1
+    x2, y2, z2, w2 = q2
+    x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+    y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+    z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+    w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+    return [x, y, z, w]
 
 def allocate_size(width: int, height: int, channels: int, bytes_per_channel: int = 1) -> int:
     """Return total shared memory size in bytes for given image shape."""
@@ -66,7 +74,7 @@ class ZedImageServer:
         self.shm_image_block: shm.SharedMemory | None = None
         self.shm_body_block: shm.SharedMemory | None = None
         self.frame_shape: Tuple[int, int, int] | None = None  # (h, w, c)
-        self.body_format = sl.BODY_FORMAT.BODY_18  # TODO: get from parameters, only BODY_18 is supported for now
+        self.body_format = sl.BODY_FORMAT.BODY_34  # TODO: get from parameters, only BODY_34 is supported for now
         self.runtime_params = sl.RuntimeParameters()
         self.body_runtime_param = sl.BodyTrackingRuntimeParameters()
         self.body_runtime_param.detection_confidence_threshold = 80
@@ -84,6 +92,8 @@ class ZedImageServer:
         init_params.camera_resolution = sl.RESOLUTION.HD1200
         init_params.camera_fps = 30
         init_params.depth_mode = sl.DEPTH_MODE.NEURAL_LIGHT
+        init_params.coordinate_units = sl.UNIT.METER          
+        init_params.coordinate_system = sl.COORDINATE_SYSTEM.RIGHT_HANDED_Z_UP_X_FWD
 
         err = self.camera.open(init_params)
         if err != sl.ERROR_CODE.SUCCESS:
@@ -93,6 +103,7 @@ class ZedImageServer:
 
         # Enable positional tracking (required for body tracking)
         positional_tracking_parameters = sl.PositionalTrackingParameters()
+        positional_tracking_parameters.set_as_static = True
         self.camera.enable_positional_tracking(positional_tracking_parameters)
         print("[ZED] Positional tracking enabled.")
 
@@ -172,17 +183,15 @@ class ZedImageServer:
     def _init_body_shared_memory(self) -> None:
         """Initialize shared memory for body tracking data."""
         # Estimate max size: header + max bodies * body_size
-        # Each body: id(4) + confidence(4) + position(12) + covariance(24) + velocity(12)
-        #           + tracking_state(1) + action_state(1) + padding(2)
-        #           + bbox_2d(16) + bbox_3d(96) + dimensions(12) + head_bbox_2d(16) + head_bbox_3d(96) + head_pos(12)
-        #           + num_keypoints(4) + keypoints_2d(variable) + keypoints_3d(variable)
-        # For BODY_18: 2*18*4 + 3*18*4 = 360 bytes per body for keypoints
-        # Fixed per body: ~300 bytes
-        # Total per body: ~660 bytes, allow for 10 bodies max = 6600 bytes
-        # Plus header: 16 bytes
+        # Each body: id(4) + confidence(4) + position(12) + covariance(24) + velocity(12) (56)
+        #           + tracking_state(1) + action_state(1) + padding(2) (4)
+        #           + bbox_2d(32) + bbox_3d(96) + dimensions(12) + head_bbox_2d(32) + head_bbox_3d(96) + head_pos(12) + head_orientation(16) + num_keypoints(4) (300)
+        #           + keypoints_2d(144) + keypoints_3d(216)
+        # Fixed per body: 56 + 4 + 300 = 360 bytes.
+        # Plus header: 20 bytes
         MAX_BODIES = 10
-        KEYPOINTS_PER_BODY = 18  # BODY_18 format
-        BODY_FIXED_SIZE = 300  # Fixed fields per body
+        KEYPOINTS_PER_BODY = 34  # BODY_34 format
+        BODY_FIXED_SIZE = 360  # Fixed fields per body (must match client _calculate_body_field_offsets)
         KEYPOINT_2D_SIZE = KEYPOINTS_PER_BODY * 2 * 4  # 2 floats per keypoint
         KEYPOINT_3D_SIZE = KEYPOINTS_PER_BODY * 3 * 4  # 3 floats per keypoint
         BODY_SIZE = BODY_FIXED_SIZE + KEYPOINT_2D_SIZE + KEYPOINT_3D_SIZE
@@ -230,7 +239,7 @@ class ZedImageServer:
 
     def _serialize_body_data(self, bodies: sl.Bodies) -> bytes:
         """Serialize body_list data into bytes for shared memory."""
-        body_list = bodies.body_list
+        body_list = sorted(bodies.body_list, key=lambda x: x.id)
         num_bodies = len(body_list)
         
         # Start with header fields
@@ -364,6 +373,30 @@ class ZedImageServer:
             except (AttributeError, IndexError, TypeError):
                 body_data += struct.pack("<fff", 0.0, 0.0, 0.0)
             
+            # Head orientation (4 floats)
+            try:
+                global_root_orientation = None
+                local_orientation_per_joint = None
+                # Get quaternions if present
+                if hasattr(body, 'global_root_orientation') and len(body.global_root_orientation) >= 4:
+                    global_root_orientation = body.global_root_orientation
+                else:
+                    print("global_root_orientation is not present")
+                if hasattr(body, 'local_orientation_per_joint') and len(body.local_orientation_per_joint) >= 1:
+                    naval_spine_orientation = body.local_orientation_per_joint[1]
+                    chest_spine_orientation = body.local_orientation_per_joint[2]
+                    neck_orientation = body.local_orientation_per_joint[3]
+                    head_orientation = body.local_orientation_per_joint[26]
+                    quat = quaternion_multiply(global_root_orientation, naval_spine_orientation)
+                    quat = quaternion_multiply(quat, chest_spine_orientation)
+                    quat = quaternion_multiply(quat, neck_orientation)
+                    quat = quaternion_multiply(quat, head_orientation)
+                    body_data += struct.pack("<ffff", float(quat[0]), float(quat[1]), float(quat[2]), float(quat[3]))
+                else:
+                    body_data += struct.pack("<ffff", 0.0, 0.0, 0.0, 0.0)
+            except (AttributeError, IndexError, TypeError):
+                body_data += struct.pack("<ffff", 0.0, 0.0, 0.0, 0.0)
+
             # Keypoints
             num_kp = 0
             keypoints_2d_list = []
@@ -378,7 +411,7 @@ class ZedImageServer:
                         num_kp = len(kp_2d)
                         
                         # Try to iterate and extract keypoints
-                        for i in range(min(num_kp, 18)):
+                        for i in range(min(num_kp, 34)):
                             try:
                                 kp = kp_2d[i]
                                 
@@ -417,7 +450,7 @@ class ZedImageServer:
             body_data += struct.pack("<I", num_kp)  # Number of keypoints
             
             # Keypoints 2D (2 floats per keypoint)
-            max_kp = 18  # BODY_18
+            max_kp = 34  # BODY_34
             # Write actual keypoints
             for kp in keypoints_2d_list:
                 body_data += struct.pack("<ff", kp[0], kp[1])
@@ -434,7 +467,7 @@ class ZedImageServer:
                     if hasattr(kp_3d, '__len__'):
                         kp_len = len(kp_3d)
                         # Try to extract keypoints
-                        for i in range(min(kp_len, 18)):
+                        for i in range(min(kp_len, 34)):
                             try:
                                 kp = kp_3d[i]
                                 # Try different access patterns
@@ -580,17 +613,12 @@ class ZedImageServer:
         if self.shm_image_block is not None:
             try:
                 self.shm_image_block.close()
-                # Do NOT unlink here by default so clients can attach after server exit.
-                # If you want auto-clean, uncomment the next line:
-                # self.shm_image_block.unlink()
                 print(f"[SHM] Detached from image shared memory '{self.shm_image_name}'")
             except FileNotFoundError:
                 pass
         if self.shm_body_block is not None:
             try:
                 self.shm_body_block.close()
-                # Do NOT unlink here by default so clients can attach after server exit.
-                # self.shm_body_block.unlink()
                 print(f"[SHM] Detached from body shared memory '{self.shm_body_name}'")
             except FileNotFoundError:
                 pass
