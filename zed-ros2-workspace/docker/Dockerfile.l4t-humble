@@ -126,7 +126,8 @@ WORKDIR /root/third_party
 RUN git clone https://github.com/ROBOTIS-GIT/DynamixelSDK.git
 WORKDIR /root/third_party/DynamixelSDK/python
 RUN pip install . --no-build-isolation
-RUN pip install pynput
+RUN apt install ffmpeg libportaudio2 -y 
+RUN pip install pynput sounddevice pydub
 
 RUN mkdir -p /root/workspace
 RUN git config --global --add safe.directory /root/workspace

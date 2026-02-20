@@ -7,10 +7,10 @@ import time
 import numpy as np
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from clients.zed_client import ZedClient
+from clients.tts_client import TTSClient
 from clients.face_recognition_client import FaceRecognitionClient
-from clients.vlm_client import VLLMClient
+# from clients.vlm_client import VLLMClient
 from zed_wrapper.body_tracking_visualizer import visualize_bodies_2d
-from openpath_CANINE_middleware.python_scripts.pantiltManager import pantiltManager
 from utils.pid import PIDControllerClass
 
 import rclpy
@@ -24,13 +24,15 @@ from nav2_msgs.action import NavigateToPose
 
 WAYPOINTS = [((-2.88689, -1.29752, 0., 0., 0., -0.417859, 0.908512)), #(x,y,z,qx,qy,qz,qw)
             ((1.56717, -6.46273, 0., 0., 0., -0.418961, 0.908004)),
-            ((7.33938, -12.266, 0., 0., 0., -0.407712, 0.913111))
+            ((3.58321, -8.42727, 0., 0., 0., -0.399719, 0.916638)),
+            # ((7.33938, -12.266, 0., 0., 0., -0.407712, 0.913111))
 ]
 
 class faceTracking(Node):
     def __init__(self):
         super().__init__('face_tracking')
         self.zed_client = ZedClient()
+        self.tts_client = TTSClient()
         
         # Init face recognition
         self.face_recognition_client = FaceRecognitionClient()
@@ -38,14 +40,16 @@ class faceTracking(Node):
         self.target_id = 0
         self.face_recognition_cnt = 0
         self.not_unknown_cnt = 0
+        self.not_looking_cnt = 0
         self.recognition_name = None
 
         # Init pan-tilt
         self.pantilt_state = [0., 0.]
         self.pantilt_command = [0., 0.]
-        self.pid = PIDControllerClass(k_p= 20, k_d = 1)
+        self.pid = PIDControllerClass(k_p= 30, k_d = 1, out_min=-30, out_max=30, dim=2, out_alpha=0.5)
         self.pid.reset()
         self.center_cam_xy = np.array([self.zed_client.image_shape[1]/2, self.zed_client.image_shape[0]/2])
+        self.t_s = time.time()
 
         # Init navigation
         self.navigation_status = "Waiting"
@@ -89,17 +93,25 @@ class faceTracking(Node):
         # Check if person detected
         if bodies is not None and len(bodies) > 0: # at least one person detected
             image_display = self.overlay_bodies_on_image(image_display, bodies)
-            if self.target_id < bodies[0]['id']: # there is no person treated before
-                self.target_id = bodies[0]['id']
-            bodies = self.filter_bodies(bodies, 3) # Leave only bodies in the threshold distance
+            bodies = self.filter_bodies(bodies, 2.3) # Leave only bodies in the threshold distance
             filtered_body_ids = self.get_body_ids(bodies)
+            not_treated_ids = []
+            for id in filtered_body_ids:
+                if not id in self.face_id_memory.keys():
+                    not_treated_ids.append(id)
+
+            if len(not_treated_ids) > 0:
+                self.target_id = not_treated_ids[0]
+                face_recognition_flag = True
+            else:
+                face_recognition_flag = False
             
             # Check if there is a person who is not treated before
-            face_recognition_flag = False
-            for body_id in filtered_body_ids:
-                if body_id >= self.target_id:
-                    face_recognition_flag = True
-                    break
+            # face_recognition_flag = False
+            # for body_id in filtered_body_ids:
+            #     if body_id >= self.target_id:
+            #         face_recognition_flag = True
+            #         break
 
             # Stop Navigation if there is a person who is not treated before
             if self.navigation_status == "Navigating" and face_recognition_flag:
@@ -112,6 +124,11 @@ class faceTracking(Node):
                 self.navigation_resume_flag = True
                 return
 
+        else: # nobody detected
+            if self.navigation_status == "Cancelled":
+                self.navigation_resume_flag = True
+                return
+
         # Process each face in the threshold distance
         for body in bodies:
             if body['id'] == self.target_id:
@@ -119,18 +136,19 @@ class faceTracking(Node):
                 face_image, bbox = self.crop_face(image, body)
                 if face_image is not None: # if face is in the image (not out of bounds)
                     result,_ = self.face_recognition_client.recognize(face_image, measure_time=False)
+                    is_looking_at_cam = self.is_person_looking_at_cam(body)
                     image_display = self.overlay_face_recognition_result(image_display, bbox, body['id'], result['name'], result['similarity'], "looking" if is_looking_at_cam else "not looking")
 
                     # Check if the person is looking at the camera
-                    is_looking_at_cam = self.is_person_looking_at_cam(body)
                     if is_looking_at_cam:
+                        self.not_looking_cnt = 0 # reset not looking counter
+                        self.face_recognition_cnt += 1
                         if result['name'] != "Unknown": 
                             if self.recognition_name is None: # first recognition
                                 self.recognition_name = result['name']
                             else:
-                                self.face_recognition_cnt += 1
                                 self.not_unknown_cnt += 1
-                        if self.face_recognition_cnt > 20: # if face recognition is successful for 20 frames
+                        if self.face_recognition_cnt > 30: # if face recognition is successful for 20 frames
                             if self.not_unknown_cnt > 5: # if not unknown for 5 rames out of 20 frames
                                 self.face_id_memory[body['id']] = self.recognition_name
                             else:
@@ -141,10 +159,15 @@ class faceTracking(Node):
                             self.not_unknown_cnt = 0
                             self.recognition_name = None
                     else: # the person is not looking at the camera
-                        # initialize counters
-                        self.face_recognition_cnt = 0
-                        self.not_unknown_cnt = 0
-                        self.recognition_name = None
+                        self.not_looking_cnt += 1
+                        if self.not_looking_cnt > 10: # if not looking for 10 frames
+                            # if not self.speak_look_at_cam():
+                            #     print("[TTS] failed to speak look at cam message")
+                            # initialize counters
+                            self.not_looking_cnt = 0
+                            self.face_recognition_cnt = 0
+                            self.not_unknown_cnt = 0
+                            self.recognition_name = None
                 self.move_pantilt(body)
             else: # the person is not the target person
                 _, bbox = self.crop_face(image_display, body)
@@ -204,6 +227,8 @@ class faceTracking(Node):
         elif self.navigation_resume_flag:
             print(f"Resuming navigation to waypoint {self.current_waypoint_index}")
             self.navigation_resume_flag = False
+            self.pantilt_command = [0.,0.]
+            self.publish_pantilt_command()
             self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
 
     def cancel_nav2_navigation(self):
@@ -339,6 +364,17 @@ class faceTracking(Node):
         else:
             return False
     
+    def speak_look_at_cam(self):
+        """
+            Speak the message to the user to look at the camera
+        """
+        text = "카메라를 응시해주세요"
+        print("[TTS] speaking: ", text)
+        response, _ = self.tts_client.speak(text=text)
+        if response.get("success"):
+            print("[TTS] spoke look at cam message")
+        return response.get("success")
+
     """___VISULIZATION FUNCTIONS___"""
     def overlay_bodies_on_image(self, image, bodies):
         """
@@ -440,6 +476,7 @@ def main():
         rclpy.spin(face_tracking)
     except KeyboardInterrupt:
         print("Keyboard interrupt")
+        face_tracking.cancel_nav2_navigation()
     finally:
         face_tracking.cancel_nav2_navigation()
         face_tracking.close()
