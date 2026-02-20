@@ -9,9 +9,14 @@ import time
 import argparse
 from pathlib import Path
 
+import numpy as np
 import sherpa_onnx
 import sounddevice as sd
 from flask import Flask, request, jsonify
+
+# ALSA/PortAudio often reject 22050 Hz; resample to device-supported rate.
+# Set at startup via _detect_playback_sample_rate().
+PLAYBACK_SAMPLE_RATE = 48000
 
 app = Flask(__name__)
 synthesizer = None
@@ -21,6 +26,49 @@ debug_mode = False
 SCRIPT_DIR = Path(__file__).parent.resolve()
 MODEL_DIR = SCRIPT_DIR / "tts_model" / "sherpa-onnx-korean-tts" / "vits-mimic3-ko_KO-kss_low"
 DATA_DIR = MODEL_DIR / "espeak-ng-data"
+
+
+def _detect_playback_sample_rate() -> int:
+    """Use default output device's preferred rate; fallback to 48000 then 44100."""
+    try:
+        out_id = sd.default.device[1]
+        info = sd.query_devices(out_id, "output")
+        rate = int(info["default_samplerate"])
+        if rate > 0:
+            return rate
+    except Exception:
+        pass
+    return 48000
+
+
+def resample_audio(samples: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
+    """Resample to target_sr so ALSA/PortAudio accepts the rate. Uses numpy only."""
+    if orig_sr == target_sr:
+        return samples
+    n = len(samples)
+    num_new = int(round(n * target_sr / orig_sr))
+    x_old = np.arange(n, dtype=np.float64)
+    x_new = np.linspace(0, n - 1, num_new, dtype=np.float64)
+    out = np.interp(x_new, x_old, samples.astype(np.float64)).astype(np.float32)
+    return out
+
+
+def _play_audio(samples: np.ndarray, sample_rate: int) -> None:
+    """Play samples at sample_rate; on PortAudio error try 48000 then 44100."""
+    rates_to_try = [sample_rate]
+    if sample_rate not in (48000, 44100):
+        rates_to_try.extend([48000, 44100])
+    last_err = None
+    for sr in rates_to_try:
+        play_s = resample_audio(samples, sample_rate, sr) if sr != sample_rate else samples
+        try:
+            sd.play(play_s, sr)
+            sd.wait()
+            return
+        except sd.PortAudioError as e:
+            last_err = e
+            continue
+    raise last_err or sd.PortAudioError("Playback failed")
 
 
 def create_synthesizer(provider="cuda"):
@@ -113,11 +161,10 @@ def speak():
             rtf = inference_time / duration_sec if duration_sec > 0 else 0
             print(f"[debug] inference: {inference_time:.3f}s | audio: {duration_sec:.3f}s | RTF: {rtf:.3f}")
 
-        # Play audio and block until finished
-        samples = audio.samples
+        # Play audio and block until finished (resample if needed for ALSA compatibility)
+        samples = np.asarray(audio.samples, dtype=np.float32)
         sample_rate = audio.sample_rate
-        sd.play(samples, sample_rate)
-        sd.wait()
+        _play_audio(samples, sample_rate)
 
         response_data = {
             "success": True,
@@ -154,11 +201,13 @@ def main():
     )
     args = parser.parse_args()
 
-    global synthesizer, debug_mode
+    global synthesizer, debug_mode, PLAYBACK_SAMPLE_RATE
     debug_mode = args.debug
+    PLAYBACK_SAMPLE_RATE = _detect_playback_sample_rate()
     print("=" * 60)
     print("Initializing TTS Server (Sherpa-ONNX)...")
     print("=" * 60)
+    print(f"Playback sample rate (from default device): {PLAYBACK_SAMPLE_RATE} Hz")
     synthesizer = create_synthesizer(provider=args.provider)
     print("Synthesizer ready.")
     print("-" * 60)

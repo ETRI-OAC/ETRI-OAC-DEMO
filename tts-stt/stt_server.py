@@ -94,9 +94,9 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="tiny",
+        default="small",
         choices=["tiny", "base", "small", "medium", "large"],
-        help="Whisper model size (default: tiny)",
+        help="Whisper model size (default: small)",
     )
     args = parser.parse_args()
 
