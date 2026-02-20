@@ -5,7 +5,10 @@ ros2 launch slam_toolbox online_async_launch.py slam_params_file:=/root/workspac
 ros2 run nav2_map_server map_saver_cli -f ~/workspace/map
 
 # Navigation
-ros2 launch nav2_bringup bringup_launch.py map:=/root/workspace/SLAM_Nav/map/map.yaml params_file:=/root/workspace/zed-ros2-workspace/SLAM_Nav/config/nav2_params.yaml
+ros2 launch nav2_bringup bringup_launch.py map:=/root/workspace/zed-ros2-workspace/SLAM_Nav/map/map.yaml params_file:=/root/workspace/zed-ros2-workspace/SLAM_Nav/config/nav2_params.yaml
+
+# Following
+ros2 launch nav2_bringup bringup_launch.py map:=/root/workspace/zed-ros2-workspace/SLAM_Nav/map/map.yaml params_file:=/root/workspace/zed-ros2-workspace/SLAM_Nav/config/following_params.yaml
 
 # RVIZ
 ros2 run rviz2 rviz2 -d $(ros2 pkg prefix nav2_bringup)/share/nav2_bringup/rviz/nav2_default_view.rviz
