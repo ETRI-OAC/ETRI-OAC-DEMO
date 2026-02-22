@@ -15,20 +15,20 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 model = None
 
+""" GUI FUNCTIONS """
+global text
+text = "" 
+@app.route("/gui", methods=["GET"])
+def send_text():
+    """Send transcribed text to GUI client."""
+    return jsonify({
+        "output": text,
+        })
+""" GUI FUNCTIONS END """
 
 def load_whisper_model(model_name: str = "tiny"):
     """Load Whisper model."""
     return whisper.load_model(model_name)
-
-
-@app.route("/health", methods=["GET"])
-def health_check():
-    """Server health check."""
-    return jsonify({
-        "status": "healthy",
-        "model_loaded": model is not None,
-    })
-
 
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
@@ -74,6 +74,9 @@ def transcribe():
                 text = (result.get("text") or "").strip()
             finally:
                 os.unlink(tmp.name)
+
+        # send text to GUI client
+        # function here
 
         return jsonify({
             "success": True,
