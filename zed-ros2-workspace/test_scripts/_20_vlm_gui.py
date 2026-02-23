@@ -1,0 +1,195 @@
+# add higher directory path
+import sys
+import os
+import cv2
+
+import time
+import numpy as np
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from clients.stt_client import STTClient
+from clients.tts_client import TTSClient
+from clients.zed_client import ZedClient
+
+# GUI
+from PyQt5.QtWidgets import QApplication
+from PyQt5.QtCore import QThread
+from gui.gui_threads import DemoQtWidget
+
+#!/usr/bin/env python3
+"""
+vLLM 서버 테스트 클라이언트
+이미지를 업로드하고 "차가 몇 대 있는지" 질문하여 응답을 받습니다.
+"""
+
+import base64
+import json
+import time
+import requests
+from pathlib import Path
+from typing import Tuple, Optional, Dict, Any
+
+instruc = {}
+instruc["default"] = "이 이미지에서 무엇을 보고 있는지 알려줘."
+instruc["hello"] = "이 이미지에서 무엇을 보고 있는지 알려줘."
+instruc["car"] = "이 이미지에서 차가 몇 대 있는지 알려줘."
+instruc["person"] = "이 이미지에서 사람은 몇 명인지 알려줘."
+
+instruc["instruction_patrol"] = "앞으로 '순찰 시작'이라는 명령이 들어오면, '순찰을 시작하겠습니다'라고 대답해줘. 그리고 '순찰 종료'라는 명령이 들어오면, '순찰을 종료하겠습니다'라고 대답해줘."
+instruc["initialize_patrol"] = "순찰 시작"
+instruc["terminate_patrol"] = "순찰 종료"
+
+
+""" UTILS """
+# 1. encode image
+def encode_image(image: np.ndarray) -> str:
+    # encode self.image to base64 string
+    _, buffer = cv2.imencode(".jpg", image)
+    return base64.b64encode(buffer).decode('utf-8')
+
+""" VLLM CLIENT"""
+class VLLMClient():
+    """
+    VLLM Client
+    """
+    
+    def __init__(
+            self,
+            api_url: str = "http://localhost:8000",
+            model: str = "cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit",
+            max_tokens: int = 512,
+            temperature: float = 0.7,
+            stt_client = None,
+            tts_client = None,
+            zed_client = None
+            ):
+
+        # initialize vlm
+        self.api_url = api_url.rstrip('/')
+        self.model = model
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+
+        # stt, tts, zed clients 
+        self.stt_client = stt_client
+        self.tts_client = tts_client
+        self.zed_client = zed_client
+        self.image = self.zed_client.grab_image()
+
+    def query(self, prompt: str, measure_time: bool = False) -> Tuple[Dict[str, Any], Optional[float]]:
+        base64_image = encode_image(self.image)
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                }
+            ],
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature
+        }
+        start_time = time.time() if measure_time else None
+        response = requests.post(
+            f"{self.api_url}/v1/chat/completions",
+            json=payload,
+            headers={"Content-Type": "application/json"}
+        )
+        response.raise_for_status()
+        response_json = response.json()    
+        elapsed_time = (time.time() - start_time) if measure_time else None
+        return response_json, elapsed_time
+
+    def warmup(self, prompt: str, count: int = 10):
+        print(f"Warming up {count} times...")
+        warmup_start = time.time()
+        for i in range(count):
+            try:
+                self.query(prompt, measure_time=False)
+                print(f"[{i+1}/{count}] Warmup complete", end='\r')
+            except requests.exceptions.ConnectionError:
+                print("Could not connect to vLLM Server.")
+            except requests.exceptions.HTTPError as e:
+                print(f"http error: {e}")
+            except Exception as e:
+                print(f"failed warmup at {i+1} iteration: {e}")
+                return
+        warmup_total_time = time.time() - warmup_start
+        print(f"Warpup done, total {warmup_total_time:.2f}s")
+        print("-" * 60)
+
+    def get_vlm_response(self, prompt: str = None, warmup_count = None):
+        if warmup_count is not None:
+            self.warmup(prompt, count=warmup_count)
+        # stt 
+        if prompt is None:
+            print("Listening for STT input...")
+            response, _ = self.stt_client.transcribe_from_mic(duration_sec=5)
+            prompt = response.get("text", "")
+        else: 
+            print(f"Using provided prompt: {prompt}")
+        # zed
+        self.image = self.zed_client.grab_image()
+        # vlm query 
+        response, elapsed_time = self.query(prompt, measure_time=True)
+
+        if "choices" in response and len(response["choices"]) > 0:
+            answer = response["choices"][0]["message"]["content"]
+            print("-" * 60)
+            print(f"Response received, answer: {answer}")
+            print("-" * 60)
+            self.tts_client.speak(answer)
+            return answer 
+        else:
+            print("Unexpected response format.")
+            return None
+
+
+class VLLMThread(QThread):
+    signal = pyqtSignal(object) # string 
+    def __init__(self, vlm_client):
+        super().__init__()
+
+        self.client = vlm_client
+        self.client.warmup(prompt=instruc["default"], count=10)
+        self.client.get_vlm_response(prompt=instruc["default"])
+        self.send_flag = False
+
+    def run(self):
+        if self.send_flag:
+            answer = self.client.get_vlm_response(warmup_count=10)
+            print(f"Answer: {answer}")
+            self.send_flag = False
+
+            self.signal.emit(answer)
+            time.sleep(0.1)
+
+def main():     # 설정
+    image_path = Path(__file__).parent / "sample_image.jpeg"
+    # 클라이언트 초기화
+    client = VLLMClient(
+        stt_client = STTClient(),
+        tts_client = TTSClient(),
+        zed_client=ZedClient()
+    )
+    vlm_thread = VLLMThread(client)
+    qt_widget = DemoQtWidget(threads = [vlm_thread])
+
+    # give vlm thread required fields 
+    # should be changed inside demo qt widget
+    vlm_thread.current_message["default_instruction"] = True
+    vlm_thread.send_flag = True
+    
+    qt_widget = DemoQtWidget(stt_client=None, tts_client=None, vlm_client=client, node_thread=vlm_thread)
+    qt_widget.show()
+    app.exec_()

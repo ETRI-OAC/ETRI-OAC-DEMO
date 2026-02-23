@@ -16,8 +16,8 @@ from utils.pid import PIDControllerClass
 
 # GUI
 from PyQt5.QtWidgets import QApplication
-from gui.gui import DemoQtWidget
 from PyQt5.QtCore import QThread
+from gui.gui import DemoQtWidget
 
 import rclpy
 from rclpy.node import Node

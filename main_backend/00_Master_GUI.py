@@ -6,8 +6,41 @@ CONSIDERATIONS
     2. Each clients with QThread for non-blocking operation
 """
 
-from facetracking_client import faceTracking 
-from vlm_client import VLLMClient 
+# add higher directory path
+import sys
+import os
+import time
+import numpy as np
+
+# import ros2 
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import PoseStamped
+from std_msgs.msg import Float64MultiArray
+from action_msgs.srv import CancelGoal
+from action_msgs.msg import GoalStatusArray
+from rclpy.action import ActionClient
+from nav2_msgs.action import NavigateToPose
+
+# import qt related libraries
+from PyQt5.QtWidgets import QApplication
+from PyQt5.QtCore import QThread
+
+# import basic clients 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from clients.zed_client import ZedClient
+from clients.stt_client import STTClient
+from clients.tts_client import TTSClient
+from clients.face_recognition_client import FaceRecognitionClient
+from clients.vlm_client import VLLMClient
+from zed_wrapper.body_tracking_visualizer import visualize_bodies_2d
+from utils.pid import PIDControllerClass
+
+# import direct clients
+from usertracking_client import humanTracking 
+from patrol_client import faceIdentificationWithNav 
+from vlm_client import VLLMClient
+from gui_widget import DemoQtWidget, DemoQtBackground
 
 # ========================================================================================================================
 class VLMThread(QThread):
@@ -20,20 +53,31 @@ class VLMThread(QThread):
         self.vlm_client.run()
 
 # ========================================================================================================================
+# humanTracking requires: Zed, TTS, VLLM, face recognition
 class UserTrackingThread(QThread):
-    def __init__(self):
+    def __init__(self, zed_client, tts_client, vlm_client, face_recognition_client):
         super().__init__()
-        self.face_tracking = faceTracking()
+        self.face_tracking = humanTracking(zed_client, tts_client, vlm_client, face_recognition_client) # ros2 node initialize
     
     def run(self):
-        # Start face tracking
-        self.face_tracking.start_tracking()
+        rclpy.init()
+        try:
+            rclpy.spin(self.face_tracking)
+        except KeyboardInterrupt:
+            print("Keyboard interrupt")
+            self.face_tracking.cancel_nav2_navigation()
+        finally:
+            self.face_tracking.cancel_nav2_navigation()
+            self.face_tracking.close()
+            rclpy.shutdown()
+            print("Face tracking closed")
 
 # ========================================================================================================================
+# humanTracking requires: Zed, TTS, face recognition
 class PatrolThread(QThread):
-    def __init__(self):
+    def __init__(self, zed_client, tts_client, face_recognition_client):
         super().__init__()
-        self.face_tracking = faceTracking()
+        self.face_tracking = faceIdentificationWithNav(zed_client, tts_client, face_recognition_client)
     
     def run(self):
         # Start face tracking
