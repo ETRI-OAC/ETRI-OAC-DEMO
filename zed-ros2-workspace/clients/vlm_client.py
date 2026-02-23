@@ -3,14 +3,19 @@
 vLLM 서버 테스트 클라이언트
 이미지를 업로드하고 "차가 몇 대 있는지" 질문하여 응답을 받습니다.
 """
-
+import os, sys
+import cv2
 import base64
 import json
 import time
 import requests
+import numpy as np
 from pathlib import Path
 from typing import Tuple, Optional, Dict, Any
-
+# import this script's directory
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from stt_client import STTClient
+from tts_client import TTSClient
 
 class VLLMClient:
     """
@@ -18,7 +23,7 @@ class VLLMClient:
     """
     
     def __init__(self, api_url: str = "http://localhost:8000", model: str = "cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit",
-                 max_tokens: int = 512, temperature: float = 0.7):
+                 max_tokens: int = 512, temperature: float = 0.7, stt_client: STTClient = None, tts_client: TTSClient = None):
         """
         vLLM 클라이언트 초기화
         
@@ -32,14 +37,28 @@ class VLLMClient:
         self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature
-    
+        self.stt_client = stt_client
+        self.tts_client = tts_client
+
     @staticmethod
     def encode_image(image_path: str) -> str:
         """이미지를 base64로 인코딩"""
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
-    
-    def query(self, image_path: str, prompt: str, measure_time: bool = False) -> Tuple[Dict[str, Any], Optional[float]]:
+    @staticmethod
+    def encode_image_from_array(image: np.ndarray) -> str:
+        success, encoded = cv2.imencode(".png", image)
+        if not success:
+            raise ValueError("Failed to encode image array")
+        return base64.b64encode(encoded.tobytes()).decode('utf-8')
+
+    def query(self, 
+              image: np.ndarray = None, 
+              image_path: str = None, 
+              prompt: str = None, 
+              measure_time: bool = False,
+              use_stt_input: bool = False,
+              use_tts_output: bool = False) -> Tuple[Dict[str, Any], Optional[float]]:
         """
         vLLM 서버에 이미지와 프롬프트를 전송하여 응답을 받습니다.
         
@@ -51,9 +70,22 @@ class VLLMClient:
         Returns:
             (API 응답 딕셔너리, 응답 시간(초) 또는 None) 튜플
         """
+        if use_stt_input:
+            if self.stt_client is None:
+                raise ValueError("STT client is not initialized")
+            response, _ = self.stt_client.transcribe_from_mic(duration_sec=5)
+            prompt = response.get("text", "")
+
         # 이미지를 base64로 인코딩
-        base64_image = self.encode_image(image_path)
-        
+        try:
+            if image is not None:
+                base64_image = self.encode_image_from_array(image)
+            else:
+                base64_image = self.encode_image(image_path)
+        except Exception as e:
+            print(f"[VLM] Failed to encode image: {e}")
+            return None, None
+
         # OpenAI 호환 API 형식으로 요청 구성
         payload = {
             "model": self.model,
@@ -91,6 +123,10 @@ class VLLMClient:
         response_json = response.json()
         
         elapsed_time = (time.time() - start_time) if measure_time else None
+        if use_tts_output:
+            if self.tts_client is None:
+                raise ValueError("TTS client is not initialized")
+            self.tts_client.speak(response_json["choices"][0]["message"]["content"])
         return response_json, elapsed_time
 
 

@@ -10,6 +10,12 @@ ros2 launch nav2_bringup bringup_launch.py map:=/root/workspace/zed-ros2-workspa
 # Following
 ros2 launch nav2_bringup bringup_launch.py map:=/root/workspace/zed-ros2-workspace/SLAM_Nav/map/map.yaml params_file:=/root/workspace/zed-ros2-workspace/SLAM_Nav/config/following_params.yaml
 
+# Following outdoor (no pre-built map): use navigation_launch.py + SLAM in another terminal
+# Terminal 1 - SLAM (provides /map and map->odom):
+ros2 launch slam_toolbox online_async_launch.py slam_params_file:=/root/workspace/zed-ros2-workspace/SLAM_Nav/config/online_async.yaml
+# Terminal 2 - Nav2 (no map argument; map comes from SLAM):
+ros2 launch nav2_bringup navigation_launch.py params_file:=/root/workspace/zed-ros2-workspace/SLAM_Nav/config/following_params_outdoor.yaml
+
 # RVIZ
 ros2 run rviz2 rviz2 -d $(ros2 pkg prefix nav2_bringup)/share/nav2_bringup/rviz/nav2_default_view.rviz
 
