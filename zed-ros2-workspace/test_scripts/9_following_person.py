@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from clients.zed_client import ZedClient
 from clients.tts_client import TTSClient
 from clients.face_recognition_client import FaceRecognitionClient
-# from clients.vlm_client import VLLMClient
+from clients.vlm_client import VLLMClient
 from zed_wrapper.body_tracking_visualizer import visualize_bodies_2d
 from utils.pid import PIDControllerClass
 
@@ -28,11 +28,12 @@ WAYPOINTS = [((-2.88689, -1.29752, 0., 0., 0., -0.417859, 0.908512)), #(x,y,z,qx
             # ((7.33938, -12.266, 0., 0., 0., -0.407712, 0.913111))
 ]
 
-class faceTracking(Node):
+class humanTracking(Node):
     def __init__(self):
-        super().__init__('face_tracking')
+        super().__init__('human_tracking')
         self.zed_client = ZedClient()
         self.tts_client = TTSClient()
+        self.vlm_client = VLLMClient(tts_client=self.tts_client)
         
         # Init face recognition
         self.face_recognition_client = FaceRecognitionClient()
@@ -44,9 +45,9 @@ class faceTracking(Node):
         self.recognition_name = None
 
         # Init pan-tilt
-        self.pantilt_state = [0., 0.]
-        self.pantilt_command = [0., 0.]
-        self.pid = PIDControllerClass(k_p= 30, k_d = 1, out_min=-30, out_max=30, dim=2, out_alpha=0.5)
+        self.pantilt_state = [0., -30.]
+        self.pantilt_command = [0., -30.]
+        self.pid = PIDControllerClass(k_p= 30, k_d = 1, out_min=-30, out_max=30, dim=1, out_alpha=0.5)
         self.pid.reset()
         self.center_cam_xy = np.array([self.zed_client.image_shape[1]/2, self.zed_client.image_shape[0]/2])
         self.t_s = time.time()
@@ -72,18 +73,22 @@ class faceTracking(Node):
         self.sub_pantilt_state = self.create_subscription(Float64MultiArray, 'pantilt_state', self.pantilt_state_callback, 10)
         self.pub_pantilt_command = self.create_publisher(Float64MultiArray, 'pantilt_command', 10)
         self.subscription = self.create_subscription(GoalStatusArray,'/navigate_to_pose/_action/status',self.nav_status_callback, 1)
-        self.timer = self.create_timer(0.02, self.timer_callback)
+        self.main_timer = self.create_timer(0.02, self.main_timer_callback)
+        self.reset_nav_timer = self.create_timer(1.0, self.reset_nav_timer_callback)
 
         # Init pan-tilt pose
-        self.publish_pantilt_command()
+        self.pantilt_command = [0., -30.]
+        for _ in range(30):
+            self.publish_pantilt_command()
+            time.sleep(0.02)
 
     """___MAIN LOOP___"""
-    def timer_callback(self):
+    def main_timer_callback(self):
         # Update Navigation Status
         # self.handle_nav_goal()
-        # if self.stop:
-        #     print("Scenario Ended")
-        #     return
+        if self.stop:
+            print("Scenario Ended")
+            return
 
         # Update Image and Bodies from ZED
         image = self.zed_client.grab_image()
@@ -92,11 +97,39 @@ class faceTracking(Node):
 
         if bodies is not None and len(bodies) > 0:
             image_display = self.overlay_bodies_on_image(image_display, bodies)
-            self.publish_face_pose(bodies[0])
+            body_ids = self.get_body_ids(bodies)
+            if self.target_id not in body_ids: # No target id found
+                self.target_id = body_ids[0]
+            # target_index = body_ids.index(self.target_id)
+            for body in bodies:
+                body_id = body['id']
+                _, bbox = self.crop_face(image_display, body)
+                if body_id == self.target_id:
+                    self.publish_face_pose(body)
+                    self.move_pantilt(body)
+                    if bbox is not None:
+                        image_display = self.overlay_face_bbox(image_display, bbox, body_id, name="tracking target")
+                elif bbox is not None:
+                    image_display = self.overlay_face_bbox(image_display, bbox, body_id, name="unknown")
+                
         self.imshow(image_display)
+    
+    def reset_nav_timer_callback(self):
+        """
+            The goal_update needs navigation goal to be sent periodically to keep the navigation goal alive.
+        """
+        # print(f"[VLM] Sending request to VLM")
+        # response = self.send_vlm_request("What objects are on the image? Respond only five items names in Korean sentence.", use_tts_output=True)
+        # response = self.send_vlm_request("Can you see any dangerous objects? Respond in a sentence in Korean.", use_tts_output=True)
+        # print(f"[VLM] Response: {response['choices'][0]['message']['content']}")
+
+        if self.navigation_status != "Navigating":
+            self.pantilt_command = [0., -30.]
+            self.publish_pantilt_command()
+            self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
 
     """___NAVIGATION FUNCTIONS___"""
-    def send_navigation_goal(self, goal):
+    def send_navigation_goal(self, goal, frame_id='map'):
         """
             Send a navigation goal to Nav2
             Args:
@@ -110,7 +143,7 @@ class faceTracking(Node):
             self.get_logger().error('Nav2 action server not available!')
             return None
         goal_msg = NavigateToPose.Goal()
-        goal_msg.pose.header.frame_id = 'map'
+        goal_msg.pose.header.frame_id = frame_id
         goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
 
         # Set Position
@@ -123,7 +156,6 @@ class faceTracking(Node):
 
         self.get_logger().info(f'Goal sent to Nav2')
         send_goal_future = client.send_goal_async(goal_msg) # Bug: The client doesn't receive the response from the service
-
 
     def handle_nav_goal(self):
         """
@@ -142,7 +174,7 @@ class faceTracking(Node):
         elif self.navigation_resume_flag:
             print(f"Resuming navigation to waypoint {self.current_waypoint_index}")
             self.navigation_resume_flag = False
-            self.pantilt_command = [0.,0.]
+            self.pantilt_command = [0.,-30.]
             self.publish_pantilt_command()
             self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
 
@@ -203,18 +235,19 @@ class faceTracking(Node):
 
     def move_pantilt(self, body):
         """
-        Move the pantilt motor to lock on the face of the given body on the middle of the image
+        Move the pantilt motor to lock on the face of the given body on the middle of the image (only x-axis)
         """
         face_xy = np.array(body['keypoints_2d'][0])
         current_position = np.array(self.pantilt_state)
 
         # calculate target pantilt position
-        err_pixel = face_xy - self.center_cam_xy
-        err_pixel[0] = -err_pixel[0]/self.center_cam_xy[0]
-        err_pixel[1] = err_pixel[1]/self.center_cam_xy[1]
+        err_pixel_x = face_xy[0] - self.center_cam_xy[0]
+        err_pixel_x = -err_pixel_x/self.center_cam_xy[0]
+        # err_pixel[1] = err_pixel[1]/self.center_cam_xy[1]
         t_curr = time.time() - self.t_s
-        self.pid.update_with_error(t_curr = t_curr, err_curr = err_pixel)
-        target_position = current_position + self.pid.out()
+        self.pid.update_with_error(t_curr = t_curr, err_curr = err_pixel_x)
+        target_position = current_position
+        target_position[0] += self.pid.out()
         self.pantilt_command = target_position.tolist()
         self.publish_pantilt_command()
 
@@ -259,25 +292,6 @@ class faceTracking(Node):
         face_pose.pose.orientation.z = face_orientation[2]
         face_pose.pose.orientation.w = face_orientation[3]
         self.pub_face_pose.publish(face_pose)
-
-    # def publish_face_pose(self):
-    #     """
-    #         Publish the face pose and orientations
-    #     """
-    #     # face_position = body['head_position']
-    #     # face_orientation = body['head_orientation']
-        
-    #     face_pose = PoseStamped()
-    #     face_pose.header.stamp = self.get_clock().now().to_msg()
-    #     face_pose.header.frame_id = 'camera_left'
-    #     face_pose.pose.position.x = 2.
-    #     face_pose.pose.position.y = 0.
-    #     face_pose.pose.position.z = 0.
-    #     face_pose.pose.orientation.x = 0.
-    #     face_pose.pose.orientation.y = 0.
-    #     face_pose.pose.orientation.z = 0.
-    #     face_pose.pose.orientation.w = 1.
-    #     self.pub_face_pose.publish(face_pose)
 
     def is_person_looking_at_cam(self, body, threshold=20):
         """
@@ -385,6 +399,11 @@ class faceTracking(Node):
         cv2.putText(image, text, text_org, font, font_scale, (0, 0, 0), thickness, lineType=cv2.LINE_AA)
 
         return image
+    
+    def send_vlm_request(self, text, use_tts_output=False):
+        image = self.zed_client.grab_image()
+        response, _ = self.vlm_client.query(image=image, prompt=text, use_tts_output=use_tts_output)
+        return response
 
     """___HELPERS___"""
     def close(self):
@@ -404,15 +423,15 @@ class faceTracking(Node):
 
 def main():
     rclpy.init()
-    face_tracking = faceTracking()
+    human_tracking_demo = humanTracking()
     try:
-        rclpy.spin(face_tracking)
+        rclpy.spin(human_tracking_demo)
     except KeyboardInterrupt:
         print("Keyboard interrupt")
-        face_tracking.cancel_nav2_navigation()
+        human_tracking_demo.cancel_nav2_navigation()
     finally:
-        face_tracking.cancel_nav2_navigation()
-        face_tracking.close()
+        human_tracking_demo.cancel_nav2_navigation()
+        human_tracking_demo.close()
         rclpy.shutdown()
         print("Face tracking closed")
 

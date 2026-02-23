@@ -31,6 +31,7 @@ class TTSClient:
         text: str,
         speed: float = 1.0,
         measure_time: bool = False,
+        is_async: bool = True,
     ) -> Tuple[Dict[str, Any], Optional[float]]:
         """
         Send text to server; server speaks and responds when done.
@@ -46,7 +47,7 @@ class TTSClient:
         payload = {"text": text, "speed": speed}
         start = time.time() if measure_time else None
         response = requests.post(
-            f"{self.api_url}/speak",
+            f"{self.api_url}/speak{'_async' if is_async else ''}",
             json=payload,
             headers={"Content-Type": "application/json"},
             timeout=120,
@@ -55,7 +56,6 @@ class TTSClient:
         result = response.json()
         elapsed = (time.time() - start) if measure_time else None
         return result, elapsed
-
 
 def main():
     parser = argparse.ArgumentParser(description="TTS Client")
