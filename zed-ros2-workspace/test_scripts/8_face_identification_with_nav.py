@@ -485,7 +485,7 @@ class faceIdentificationWithNav(Node):
 
 def main():
     rclpy.init()
-    face_id_demo = faceIdentificationWithNav(use_navigation=False, use_audio=False)
+    face_id_demo = faceIdentificationWithNav(use_navigation=True, use_audio=True)
     try:
         rclpy.spin(face_id_demo)
     except KeyboardInterrupt:
