@@ -30,6 +30,16 @@ class UserTrackingThread(QThread):
         self.face_tracking.start_tracking()
 
 # ========================================================================================================================
+class PatrolThread(QThread):
+    def __init__(self):
+        super().__init__()
+        self.face_tracking = faceTracking()
+    
+    def run(self):
+        # Start face tracking
+        self.face_tracking.start_tracking()
+
+# ========================================================================================================================
 class BackendMaster(QWidget):
     def __init__(self):
         super().__init__()
