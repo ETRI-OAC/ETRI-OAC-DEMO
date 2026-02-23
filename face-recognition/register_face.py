@@ -74,10 +74,10 @@ def main():
     print("\nInitializing Face Recognizer (ArcFace)...")
     recognizer = FaceRecognizer(similarity_threshold=args.threshold)
     
-    # Load existing database if exists
-    if os.path.exists(args.database):
-        recognizer.load_database(args.database)
-        print(f"Existing faces in database: {list(recognizer.known_faces.keys())}")
+    # # Load existing database if exists
+    # if os.path.exists(args.database):
+    #     recognizer.load_database(args.database)
+    #     print(f"Existing faces in database: {list(recognizer.known_faces.keys())}")
     
     # Process single image or directory
     if args.image is not None:
