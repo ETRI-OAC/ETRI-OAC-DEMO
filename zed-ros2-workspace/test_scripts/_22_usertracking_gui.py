@@ -38,11 +38,12 @@ class humanTracking(Node):
         # Init face recognition
         self.face_recognition_client = FaceRecognitionClient()
         self.face_id_memory = {} # {id: name}
-        self.target_id = 0
+        self.target_id = -1
         self.face_recognition_cnt = 0
         self.not_unknown_cnt = 0
         self.not_looking_cnt = 0
         self.recognition_name = None
+        self.body_ids = []
 
         # Init pan-tilt
         self.pantilt_state = [0., -30.]
@@ -97,9 +98,9 @@ class humanTracking(Node):
 
         if bodies is not None and len(bodies) > 0:
             image_display = self.overlay_bodies_on_image(image_display, bodies)
-            body_ids = self.get_body_ids(bodies)
-            if self.target_id not in body_ids: # No target id found
-                self.target_id = body_ids[0]
+            self.body_ids = self.get_body_ids(bodies)
+            # if self.target_id not in body_ids: # No target id found
+            #     self.target_id = body_ids[0]
             # target_index = body_ids.index(self.target_id)
             for body in bodies:
                 body_id = body['id']
@@ -112,7 +113,7 @@ class humanTracking(Node):
                 elif bbox is not None:
                     image_display = self.overlay_face_bbox(image_display, bbox, body_id, name="unknown")
                 
-        self.imshow(image_display)
+        # self.imshow(image_display)
     
     def reset_nav_timer_callback(self):
         """
@@ -123,7 +124,7 @@ class humanTracking(Node):
         # response = self.send_vlm_request("Can you see any dangerous objects? Respond in a sentence in Korean.", use_tts_output=True)
         # print(f"[VLM] Response: {response['choices'][0]['message']['content']}")
 
-        if self.navigation_status != "Navigating":
+        if self.navigation_status != "Navigating" and self.target_id in self.body_ids:
             self.pantilt_command = [0., -30.]
             self.publish_pantilt_command()
             self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
@@ -421,19 +422,34 @@ class humanTracking(Node):
     def get_body_ids(self, bodies):
         return [body['id'] for body in bodies]
 
+
+class UsertrackingThread(QThread):
+    signal = pyqtSignal(list, object) # body_ids, image
+    def __init__(self, usertracking_client):
+        super().__init__()
+
+        self.client = usertracking_client
+        self.body_ids = []
+
+    def run(self):
+        while True:
+            # spin ros2 node
+            rclpy.spin_once(self.client)
+            # now send signal
+            self.signal.emit(self.client.body_ids ,self.client.image_display) # image
+
+
 def main():
-    rclpy.init()
-    human_tracking_demo = humanTracking()
-    try:
-        rclpy.spin(human_tracking_demo)
-    except KeyboardInterrupt:
-        print("Keyboard interrupt")
-        human_tracking_demo.cancel_nav2_navigation()
-    finally:
-        human_tracking_demo.cancel_nav2_navigation()
-        human_tracking_demo.close()
-        rclpy.shutdown()
-        print("Face tracking closed")
+    app = QApplication(sys.argv)
+    usertracking_client = humanTracking()
+    usertracking_thread = UsertrackingThread(usertracking_client)
+    qt_widget = DemoQtWidget(
+        vlm_thread=None,
+        patrol_thread=None,
+        user_tracking_thread=usertracking_thread
+    )
+    qt_widget.show()
+    app.exec_()
 
 if __name__ == "__main__":
     main()

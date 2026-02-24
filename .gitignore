@@ -27,3 +27,6 @@ log/
 .idea/
 *.swp
 .DS_Store
+
+# === zed ros2 workspace ignores ===
+zed-ros2-workspace/zed_wrapper/core*

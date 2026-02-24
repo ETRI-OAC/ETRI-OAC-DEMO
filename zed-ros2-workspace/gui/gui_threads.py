@@ -267,7 +267,10 @@ class DemoQtWidget(QWidget):
             self.info_labels['vlm_text'].setText("VLM is OFF")
     
     # ====================================================================================
-    def update_user_tracking_label(self, image):
+    def update_user_tracking_label(self, body_ids, image):
+        # TODO: send signal from thread: body_ids, image
+        # TODO: update with body ids & images
+        # TODO: add button to update body id (of self.target_id)
         if self.states['usertracking']:
             # Update with image 
             pixmap = QPixmap()
@@ -282,6 +285,8 @@ class DemoQtWidget(QWidget):
             self.info_labels['usertracking'].setPixmap(self.placeholder_image)
 
     def update_patrol_label(self, image):
+        # TODO: send signal from thread: body_ids, image
+        # TODO: 
         if self.states['patrol']:
             self.patrol_thread.node.stop = False
             # image = self.patrol_thread.node.image_display # already emitted by signal

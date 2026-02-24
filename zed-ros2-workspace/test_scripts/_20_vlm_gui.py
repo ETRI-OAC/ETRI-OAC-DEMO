@@ -23,8 +23,12 @@ from PyQt5.QtGui import QPixmap
 from gui.gui_threads import DemoQtWidget
 
 
+instruction_two_sentence = "지금부터 모든 응답은 두 문장 이내로 해줘."
+patrol_instruction = "앞으로 '순찰을 시작해줘'이라는 명령이 들어오면, '순찰을 시작하겠습니다'라고 한문장으로 대답해줘. 그리고 '순찰 종료'라는 명령이 들어오면, '순찰을 종료하겠습니다'라고 한문장으로 대답해줘."
+instruction_usertracking = "앞으로 '나를 따라와'이라는 명령이 들어오면, '네, 따라가겠습니다'라고 한문장으로 대답해줘. 그리고 '그만 따라와'라는 명령이 들어오면, '네, 멈추겠습니다'라고 한문장으로 대답해줘."
+
 instruc = {}
-instruc["default"] = "앞으로 '순찰 시작'이라는 명령이 들어오면, '순찰을 시작하겠습니다'라고 대답해줘. 그리고 '순찰 종료'라는 명령이 들어오면, '순찰을 종료하겠습니다'라고 대답해줘."
+instruc["default"] = instruction_two_sentence + patrol_instruction + instruction_usertracking
 instruc["hello"] = "이 이미지에서 무엇을 보고 있는지 알려줘."
 instruc["car"] = "이 이미지에서 차가 몇 대 있는지 알려줘."
 instruc["person"] = "이 이미지에서 사람은 몇 명인지 알려줘."
@@ -166,7 +170,7 @@ class VLLMThread(QThread):
             if self.send_flag:
                 print("VLLMThread: send_flag is True, getting response...")
                 # answer, image = self.client.get_vlm_response(prompt = instruc["person"])
-                answer, image = self.client.get_vlm_response(prompt = instruc["default"],use_audio=True)
+                answer, image = self.client.get_vlm_response(use_audio=False)
                 print(f"Answer: {answer}")
                 self.send_flag = False
 
@@ -179,6 +183,7 @@ class VLLMThread(QThread):
 def main():
     app = QApplication(sys.argv)
     vllm_client = VLLMClient(
+        api_url = "http://localhost:8000",
         stt_client = STTClient(),
         tts_client = TTSClient(),
         zed_client=ZedClient()
