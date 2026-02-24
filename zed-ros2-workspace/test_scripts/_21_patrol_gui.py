@@ -100,7 +100,7 @@ class faceIdentificationWithNav(Node):
         if self.use_navigation:
             self.handle_nav_goal()
         if self.stop:
-            print("Scenario Ended")
+            print("[NAV2] Stop Flag On")
             return
 
         # Update Image and Bodies from ZED
@@ -243,7 +243,10 @@ class faceIdentificationWithNav(Node):
         """
             Handle navigation goal
         """
-        if self.navigation_status == "Goal Reached":
+        if self.stop and self.navigation_status not in  ["Cancelled", "Goal Reached"]:
+            self.cancel_nav2_navigation()
+            self.navigation_resume_flag = True
+        elif self.navigation_status == "Goal Reached":
             if self.current_waypoint_index < len(self.waypoints) - 1:
                 print(f"Updating to waypoint {self.current_waypoint_index + 1}")
                 self.current_waypoint_index += 1 # update waypoint index
@@ -252,7 +255,6 @@ class faceIdentificationWithNav(Node):
                 print("Reached the last waypoint")
                 self.navigation_status = "End"
                 self.stop = True
-
         elif not self.stop and self.navigation_resume_flag:
             print(f"Resuming navigation to waypoint {self.current_waypoint_index}")
             self.navigation_resume_flag = False
@@ -497,6 +499,11 @@ class nodeThread(QThread):
 
     def run(self):
         rclpy.spin(self.node)
+
+    # def run(self):
+    #     while True:
+    #         if gui_flag:
+    #             rclpy.spin_once(self.node)
 
 def main():
     zed_client = ZedClient()

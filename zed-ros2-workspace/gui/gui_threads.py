@@ -2,6 +2,7 @@ import os
 import sys
 import requests
 import numpy as np
+import time
 
 # use pyqt5!!
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
@@ -87,23 +88,27 @@ class DemoQtWidget(QWidget):
 
         # background thread - communicate with server
         if vlm_thread is not None:
+            print("vlm thread received, running...")
             self.vlm_thread = vlm_thread
             self.vlm_thread.signal.connect(self.update_vlm_label)
             self.vlm_thread.start()
         if patrol_thread is not None:
+            print("patrol thread received, running...")
             self.patrol_thread = patrol_thread
             self.patrol_thread.signal.connect(self.update_patrol_label)
             self.patrol_thread.start()
         if user_tracking_thread is not None:
+            print("user tracking thread received, running...")
             self.user_tracking_thread = user_tracking_thread
             self.user_tracking_thread.signal.connect(self.update_user_tracking_label)
             self.user_tracking_thread.start()
-        self.stts_thread = STTSThread()
-        self.stts_thread.stt_signal.connect(self.update_stt_label)
-        self.stts_thread.tts_signal.connect(self.update_tts_label)
-        self.stts_thread.start()
+        # self.stts_thread = STTSThread()
+        # self.stts_thread.stt_signal.connect(self.update_stt_label)
+        # self.stts_thread.tts_signal.connect(self.update_tts_label)
+        # self.stts_thread.start()
 
         self.tts_text = ""
+        print("GUI initialized")
 
     def initUI(self):
         # 0. main layout & title
@@ -222,7 +227,7 @@ class DemoQtWidget(QWidget):
     def vlm_query_callback(self):
         if self.states['vlm']:
             self.vlm_thread.send_flag = True
-            self.state_labels['vlm_query'].setText("VLM Query: SENT")
+            self.state_labels['vlm_query'].setText("VLM Query: TALKING...")
             time.sleep(0.1) # wait for thread to process
         else:
             self.state_labels['vlm_query'].setText("VLM Query: OFF - Turn on VLM first")
@@ -246,6 +251,7 @@ class DemoQtWidget(QWidget):
     # ====================================================================================
     def update_vlm_label(self, text, image):
         if self.states['vlm']:
+            print("vlm thread signal received in GUI, updating label...")
             # Update with image 
             pixmap = QPixmap()
             pixmap.loadFromData(image)
@@ -274,24 +280,28 @@ class DemoQtWidget(QWidget):
             self.info_labels['usertracking'].setPixmap(scaled_pixmap)
         else:
             self.info_labels['usertracking'].setPixmap(self.placeholder_image)
+
     def update_patrol_label(self, image):
         if self.states['patrol']:
+            self.patrol_thread.node.stop = False
+            # image = self.patrol_thread.node.image_display # already emitted by signal
             # Update with image 
             pixmap = QPixmap()
             pixmap.loadFromData(image)
             scaled_pixmap = pixmap.scaled(
-                300, 200, # for testing, fixed size
+                300, 200, 
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
             self.info_labels['patrol'].setPixmap(scaled_pixmap)
         else:
+            self.patrol_thread.node.stop = True # patrol node stop flag true 
             self.info_labels['patrol'].setPixmap(self.placeholder_image) # show placeholder when patrol is off
             # or, place holder
 
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    ex = DemoQtWidget()
-    ex.show()
-    # Change 2: Use exec_() for PyQt5
-    sys.exit(app.exec_())
+# if __name__ == '__main__':
+#     app = QApplication(sys.argv)
+#     ex = DemoQtWidget()
+#     ex.show()
+#     # Change 2: Use exec_() for PyQt5
+#     sys.exit(app.exec_())

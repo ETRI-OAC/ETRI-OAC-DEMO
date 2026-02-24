@@ -17,21 +17,14 @@ from clients.tts_client import TTSClient
 from clients.zed_client import ZedClient
 
 # GUI
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QThread
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
+from PyQt5.QtCore import QThread, pyqtSignal, Qt
+from PyQt5.QtGui import QPixmap
 from gui.gui_threads import DemoQtWidget
-
-#!/usr/bin/env python3
-"""
-vLLM 서버 테스트 클라이언트
-이미지를 업로드하고 "차가 몇 대 있는지" 질문하여 응답을 받습니다.
-"""
-
-
 
 
 instruc = {}
-instruc["default"] = "이 이미지에서 무엇을 보고 있는지 알려줘."
+instruc["default"] = "앞으로 '순찰 시작'이라는 명령이 들어오면, '순찰을 시작하겠습니다'라고 대답해줘. 그리고 '순찰 종료'라는 명령이 들어오면, '순찰을 종료하겠습니다'라고 대답해줘."
 instruc["hello"] = "이 이미지에서 무엇을 보고 있는지 알려줘."
 instruc["car"] = "이 이미지에서 차가 몇 대 있는지 알려줘."
 instruc["person"] = "이 이미지에서 사람은 몇 명인지 알려줘."
@@ -130,14 +123,13 @@ class VLLMClient():
         print(f"Warpup done, total {warmup_total_time:.2f}s")
         print("-" * 60)
 
-    def get_vlm_response(self, prompt: str = None, warmup_count = None):
-        if warmup_count is not None:
-            self.warmup(prompt, count=warmup_count)
+    def get_vlm_response(self, prompt: str = None, use_audio = False):
         # stt 
         if prompt is None:
-            print("Listening for STT input...") 
+            print("Listening for STT input...")
             response, _ = self.stt_client.transcribe_from_mic(duration_sec=5)
             prompt = response.get("text", "")
+            print(f"STT result for VLM query: {prompt}")
         else: 
             print(f"Using provided prompt: {prompt}")
         # zed
@@ -150,7 +142,8 @@ class VLLMClient():
             print("-" * 60)
             print(f"Response received, answer: {answer}")
             print("-" * 60)
-            self.tts_client.speak(answer)
+            if use_audio:
+                self.tts_client.speak(answer)
             return answer, self.image
         else:
             print("Unexpected response format.")
@@ -163,27 +156,34 @@ class VLLMThread(QThread):
         super().__init__()
 
         self.client = vlm_client
-        self.client.warmup(prompt=instruc["default"], count=10)
+        self.client.warmup(prompt=instruc["default"], count=1)
         self.client.get_vlm_response(prompt=instruc["default"])
         self.send_flag = False
 
     def run(self):
-        if self.send_flag:
-            answer, image = self.client.get_vlm_response(warmup_count=10)
-            print(f"Answer: {answer}")
-            self.send_flag = False
+        while True:
+            # print("vlm thread is spinning!")
+            if self.send_flag:
+                print("VLLMThread: send_flag is True, getting response...")
+                # answer, image = self.client.get_vlm_response(prompt = instruc["person"])
+                answer, image = self.client.get_vlm_response(prompt = instruc["default"],use_audio=True)
+                print(f"Answer: {answer}")
+                self.send_flag = False
 
-            self.signal.emit(answer, image)
-            time.sleep(0.1)
+                self.signal.emit(answer, image)
+                time.sleep(0.1)
+            else:
+                # print("VLLMThread: send_flag is False, skipping...")
+                pass
 
 def main():
     app = QApplication(sys.argv)
-    client = VLLMClient(
+    vllm_client = VLLMClient(
         stt_client = STTClient(),
         tts_client = TTSClient(),
         zed_client=ZedClient()
     )
-    vlm_thread = VLLMThread(client)
+    vlm_thread = VLLMThread(vllm_client)
     qt_widget = DemoQtWidget(
         vlm_thread=vlm_thread,
         patrol_thread=None,
@@ -191,3 +191,6 @@ def main():
     )
     qt_widget.show()
     app.exec_()
+
+if __name__ == "__main__":
+    main()

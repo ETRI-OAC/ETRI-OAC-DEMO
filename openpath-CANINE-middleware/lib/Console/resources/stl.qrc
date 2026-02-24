@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/">
+        <file>stl/calf.stl</file>
+        <file>stl/hip.stl</file>
+        <file>stl/thigh.stl</file>
+        <file>stl/trunk1.stl</file>
+    </qresource>
+</RCC>
