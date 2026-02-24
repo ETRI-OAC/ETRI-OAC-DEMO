@@ -2,6 +2,12 @@
 import sys
 import os
 import cv2
+import base64
+import json
+import time
+import requests
+from pathlib import Path
+from typing import Tuple, Optional, Dict, Any
 
 import time
 import numpy as np
@@ -21,12 +27,8 @@ vLLM 서버 테스트 클라이언트
 이미지를 업로드하고 "차가 몇 대 있는지" 질문하여 응답을 받습니다.
 """
 
-import base64
-import json
-import time
-import requests
-from pathlib import Path
-from typing import Tuple, Optional, Dict, Any
+
+
 
 instruc = {}
 instruc["default"] = "이 이미지에서 무엇을 보고 있는지 알려줘."
@@ -133,7 +135,7 @@ class VLLMClient():
             self.warmup(prompt, count=warmup_count)
         # stt 
         if prompt is None:
-            print("Listening for STT input...")
+            print("Listening for STT input...") 
             response, _ = self.stt_client.transcribe_from_mic(duration_sec=5)
             prompt = response.get("text", "")
         else: 
@@ -149,14 +151,14 @@ class VLLMClient():
             print(f"Response received, answer: {answer}")
             print("-" * 60)
             self.tts_client.speak(answer)
-            return answer 
+            return answer, self.image
         else:
             print("Unexpected response format.")
-            return None
+            return None, None
 
 
 class VLLMThread(QThread):
-    signal = pyqtSignal(object) # string 
+    signal = pyqtSignal(str, object) # string 
     def __init__(self, vlm_client):
         super().__init__()
 
@@ -167,29 +169,25 @@ class VLLMThread(QThread):
 
     def run(self):
         if self.send_flag:
-            answer = self.client.get_vlm_response(warmup_count=10)
+            answer, image = self.client.get_vlm_response(warmup_count=10)
             print(f"Answer: {answer}")
             self.send_flag = False
 
-            self.signal.emit(answer)
+            self.signal.emit(answer, image)
             time.sleep(0.1)
 
-def main():     # 설정
-    image_path = Path(__file__).parent / "sample_image.jpeg"
-    # 클라이언트 초기화
+def main():
+    app = QApplication(sys.argv)
     client = VLLMClient(
         stt_client = STTClient(),
         tts_client = TTSClient(),
         zed_client=ZedClient()
     )
     vlm_thread = VLLMThread(client)
-    qt_widget = DemoQtWidget(threads = [vlm_thread])
-
-    # give vlm thread required fields 
-    # should be changed inside demo qt widget
-    vlm_thread.current_message["default_instruction"] = True
-    vlm_thread.send_flag = True
-    
-    qt_widget = DemoQtWidget(stt_client=None, tts_client=None, vlm_client=client, node_thread=vlm_thread)
+    qt_widget = DemoQtWidget(
+        vlm_thread=vlm_thread,
+        patrol_thread=None,
+        user_tracking_thread=None
+    )
     qt_widget.show()
     app.exec_()

@@ -9,6 +9,58 @@ from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QPixmap
 
 
+class STTSThread(QThread):
+    # total 5 signals for 5 buttons
+    tts_signal = pyqtSignal(str)
+    stt_signal = pyqtSignal(str)
+
+    def __init__(
+            self,
+            timeout = 1,
+            stt_port = 8000, # should be modified
+            tts_port = 8001, # should be modified
+            ):
+        super().__init__()
+        # list of pyqtsignals
+        self.signals = {
+            'stt': self.stt_signal,
+            'tts': self.tts_signal,
+            'kill': None,
+        }
+        self.timeout = timeout
+        self.default_image = np.ones((480, 640, 3), dtype=np.uint8)  # Placeholder for raw image data
+        self.stt_port = stt_port
+        self.tts_port = tts_port
+        self.ip = "127.0.0.1"
+
+    def fetch_stt_data(self):
+        url = f"http://{self.ip}:{self.stt_port}/gui"
+        current_signal = self.signals.get('stt')
+        try:
+            response = requests.get(url, timeout=self.timeout)
+            data = response.json()
+            server_message = data.get("output", "No text received")
+            current_signal.emit(server_message)
+        except Exception as e:
+            current_signal.emit(f"Error: {str(e)}")
+
+    def fetch_tts_data(self):
+        url = f"http://{self.ip}:{self.tts_port}/gui"
+        current_signal = self.signals.get('tts')
+        try:
+            response = requests.get(url, timeout=self.timeout)
+            data = response.json()
+            server_message = data.get("output", "No text received")
+            current_signal.emit(server_message)
+        except Exception as e:
+            current_signal.emit(f"Error: {str(e)}")
+
+    def run(self):
+        while True:
+            self.fetch_stt_data()
+            self.fetch_tts_data()
+            time.sleep(0.01)
+
 class DemoQtWidget(QWidget):
     def __init__(
             self,
@@ -18,14 +70,6 @@ class DemoQtWidget(QWidget):
              ):
         super().__init__()
         self.initUI()
-
-        # background thread - communicate with server
-        self.vlm_thread = vlm_thread
-        self.patrol_thread = patrol_thread
-        self.user_tracking_thread = user_tracking_thread
-        self.vlm_thread.signal.connect(self.update_vlm_label)
-        self.patrol_thread.signal.connect(self.update_patrol_label)
-        self.user_tracking_thread.signal.connect(self.update_user_tracking_label)
 
         # placeholder image
         placeholder_path = "./placeholder.jpg"
@@ -40,9 +84,24 @@ class DemoQtWidget(QWidget):
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
-        self.background_thread.start()
-        self.node_thread = node_thread
-        self.node_thread.start()
+
+        # background thread - communicate with server
+        if vlm_thread is not None:
+            self.vlm_thread = vlm_thread
+            self.vlm_thread.signal.connect(self.update_vlm_label)
+            self.vlm_thread.start()
+        if patrol_thread is not None:
+            self.patrol_thread = patrol_thread
+            self.patrol_thread.signal.connect(self.update_patrol_label)
+            self.patrol_thread.start()
+        if user_tracking_thread is not None:
+            self.user_tracking_thread = user_tracking_thread
+            self.user_tracking_thread.signal.connect(self.update_user_tracking_label)
+            self.user_tracking_thread.start()
+        self.stts_thread = STTSThread()
+        self.stts_thread.stt_signal.connect(self.update_stt_label)
+        self.stts_thread.tts_signal.connect(self.update_tts_label)
+        self.stts_thread.start()
 
         self.tts_text = ""
 
@@ -79,7 +138,7 @@ class DemoQtWidget(QWidget):
             part_layout.addWidget(info_label)
             text_button_layout.addLayout(part_layout)
 
-        # 4. kill button
+        # 2. kill button
         kill_layout = QVBoxLayout()
         kill_btn = QPushButton('Kill', self)
         kill_btn.setFixedSize(300, 150) 
@@ -87,7 +146,7 @@ class DemoQtWidget(QWidget):
         kill_layout.addWidget(kill_btn)
         text_button_layout.addLayout(kill_layout)
 
-        # 2. VLM label - buttons & image, text
+        # 3-1. VLM label - buttons & image, text
         image_button_layout = QHBoxLayout()
         part_layout = QVBoxLayout()
         # button
@@ -107,7 +166,19 @@ class DemoQtWidget(QWidget):
         part_layout.addWidget(text_info_label)
         image_button_layout.addLayout(part_layout)
 
-        # 3. User Tracking & Patrol label - buttons & image
+        # 3-2. VLM label - send query
+        part_layout = QVBoxLayout()
+        vlm_query_btn = QPushButton('VLM Query', self)
+        vlm_query_btn.setFixedSize(100, 100) 
+        vlm_query_btn.clicked.connect(lambda checked, name='vlm_query': self.vlm_query_callback())
+        part_layout.addWidget(vlm_query_btn)
+        # label
+        vlm_query_state_label = QLabel("VLM Query: OFF", self)
+        self.state_labels['vlm_query'] = vlm_query_state_label
+        part_layout.addWidget(vlm_query_state_label)
+        image_button_layout.addLayout(part_layout)
+
+        # 4. User Tracking & Patrol label - buttons & image
         self.image_buttons = ['usertracking', 'patrol']
         for btn_name in self.image_buttons:
             part_layout = QVBoxLayout()
@@ -147,6 +218,16 @@ class DemoQtWidget(QWidget):
         for label in self.state_labels.values():
             label.setText(f"{label.text().split(':')[0]}: OFF")
 
+    """ VLM QUERY CALLBACK """
+    def vlm_query_callback(self):
+        if self.states['vlm']:
+            self.vlm_thread.send_flag = True
+            self.state_labels['vlm_query'].setText("VLM Query: SENT")
+            time.sleep(0.1) # wait for thread to process
+        else:
+            self.state_labels['vlm_query'].setText("VLM Query: OFF - Turn on VLM first")
+
+    # ====================================================================================
     """ UPDATE LABEL WITH SERVER DATA """
     def update_tts_label(self, text):
         # if state is on, update label with server text
@@ -162,22 +243,24 @@ class DemoQtWidget(QWidget):
         else:
             self.info_labels['stt'].setText("STT is OFF")
 
-    def update_vlm_label(self, data):
+    # ====================================================================================
+    def update_vlm_label(self, text, image):
         if self.states['vlm']:
             # Update with image 
             pixmap = QPixmap()
-            pixmap.loadFromData(data)
+            pixmap.loadFromData(image)
             scaled_pixmap = pixmap.scaled(
                 300, 200, # for testing, fixed size
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
             self.info_labels['vlm_image'].setPixmap(scaled_pixmap)
-            self.info_labels['vlm_text'].setText(self.tts_text)
+            self.info_labels['vlm_text'].setText(text)
         else:
             self.info_labels['vlm_image'].setPixmap(self.placeholder_image)
             self.info_labels['vlm_text'].setText("VLM is OFF")
     
+    # ====================================================================================
     def update_user_tracking_label(self, image):
         if self.states['usertracking']:
             # Update with image 
