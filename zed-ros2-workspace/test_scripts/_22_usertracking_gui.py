@@ -22,6 +22,12 @@ from action_msgs.msg import GoalStatusArray
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
 
+# GUI
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
+from PyQt5.QtCore import QThread, pyqtSignal, Qt
+from PyQt5.QtGui import QPixmap
+from gui.gui_threads import DemoQtWidget
+
 WAYPOINTS = [((-2.88689, -1.29752, 0., 0., 0., -0.417859, 0.908512)), #(x,y,z,qx,qy,qz,qw)
             ((1.56717, -6.46273, 0., 0., 0., -0.418961, 0.908004)),
             ((3.58321, -8.42727, 0., 0., 0., -0.399719, 0.916638)),
@@ -55,19 +61,13 @@ class humanTracking(Node):
 
         # Init navigation
         self.navigation_status = "Waiting"
-        self.navigation_resume_flag = True
+        self.navigation_resume_flag = False # True
         self.current_waypoint_index = 0
         self.waypoints = WAYPOINTS
         self.stop = False
 
         # Init cv2 window
-        if self.zed_client.shm_image_block is None:
-            print("[CLIENT] Image shared memory not available. Is the server running?")
-            return
-        self.image_width = self.zed_client.image_shape[1]
-        self.image_height = self.zed_client.image_shape[0]
-        cv2.namedWindow("ZED Client - Body Tracking", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("ZED Client - Body Tracking", self.image_width, self.image_height)
+        self.image_display = self.zed_client.grab_image()
 
         # Init ROS2 Components
         self.pub_face_pose = self.create_publisher(PoseStamped, 'goal_update', 10)
@@ -117,17 +117,31 @@ class humanTracking(Node):
     
     def reset_nav_timer_callback(self):
         """
-            The goal_update needs navigation goal to be sent periodically to keep the navigation goal alive.
+        CHANGED
+            - this function handles every start of navigation 
+            - Initializes very first navigation 
+            - if cannceled -> resume with checking resume flag 
         """
-        # print(f"[VLM] Sending request to VLM")
-        # response = self.send_vlm_request("What objects are on the image? Respond only five items names in Korean sentence.", use_tts_output=True)
-        # response = self.send_vlm_request("Can you see any dangerous objects? Respond in a sentence in Korean.", use_tts_output=True)
-        # print(f"[VLM] Response: {response['choices'][0]['message']['content']}")
-
-        if self.navigation_status != "Navigating" and self.target_id in self.body_ids:
+        if self.navigation_status != "Navigating" and self.navigation_resume_flag == True:
+            # if self.target_id in self.body_ids:
+            #     print("Initializing Navigation to target id: ", self.target_id)
+            #     self.pantilt_command = [0., -30.]
+            #     self.publish_pantilt_command()
+            #     self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
+            #     self.navigatioin_resume_flag = False
+            # else:
+            #     print("No target id found in the scene. Cannot start navigation.")
+            
+            # test
+            print("Initializing Navigation to target id: ", self.target_id)
             self.pantilt_command = [0., -30.]
             self.publish_pantilt_command()
             self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
+            self.navigatioin_resume_flag = False
+            self.navigation_resume_flag = False # wait until target id is found to start navigation
+        elif self.navigation_status != "Navigating" and self.navigation_resume_flag == False:
+            # no resume, cancelled, just standing 
+            pass
 
     """___NAVIGATION FUNCTIONS___"""
     def send_navigation_goal(self, goal, frame_id='map'):
@@ -427,29 +441,31 @@ class UsertrackingThread(QThread):
     signal = pyqtSignal(list, object) # body_ids, image
     def __init__(self, usertracking_client):
         super().__init__()
-
         self.client = usertracking_client
-        self.body_ids = []
 
     def run(self):
         while True:
             # spin ros2 node
             rclpy.spin_once(self.client)
-            # now send signal
+            print("ros2 node spinning!")
+            print("navigation status: ", self.client.navigation_status)
+            print("resume flag: ", self.client.navigation_resume_flag)
             self.signal.emit(self.client.body_ids ,self.client.image_display) # image
 
 
 def main():
     app = QApplication(sys.argv)
+    rclpy.init()
     usertracking_client = humanTracking()
     usertracking_thread = UsertrackingThread(usertracking_client)
     qt_widget = DemoQtWidget(
         vlm_thread=None,
         patrol_thread=None,
-        user_tracking_thread=usertracking_thread
+        usertracking_thread=usertracking_thread
     )
     qt_widget.show()
     app.exec_()
+    rclpy.shutdown()
 
 if __name__ == "__main__":
     main()

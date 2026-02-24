@@ -7,8 +7,7 @@ import time
 # use pyqt5!!
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
-from PyQt5.QtGui import QPixmap
-
+from PyQt5.QtGui import QPixmap, QFont
 
 class STTSThread(QThread):
     # total 5 signals for 5 buttons
@@ -67,10 +66,9 @@ class DemoQtWidget(QWidget):
             self,
              vlm_thread,
              patrol_thread,
-             user_tracking_thread,
+             usertracking_thread,
              ):
         super().__init__()
-        self.initUI()
 
         # placeholder image
         placeholder_path = "./placeholder.jpg"
@@ -86,6 +84,9 @@ class DemoQtWidget(QWidget):
                 Qt.TransformationMode.SmoothTransformation
             )
 
+        # UI initialization
+        self.initUI()
+
         # background thread - communicate with server
         if vlm_thread is not None:
             print("vlm thread received, running...")
@@ -97,17 +98,20 @@ class DemoQtWidget(QWidget):
             self.patrol_thread = patrol_thread
             self.patrol_thread.signal.connect(self.update_patrol_label)
             self.patrol_thread.start()
-        if user_tracking_thread is not None:
+        if usertracking_thread is not None:
             print("user tracking thread received, running...")
-            self.user_tracking_thread = user_tracking_thread
-            self.user_tracking_thread.signal.connect(self.update_user_tracking_label)
-            self.user_tracking_thread.start()
+            self.usertracking_thread = usertracking_thread
+            self.usertracking_thread.signal.connect(self.update_user_tracking_label)
+            self.usertracking_thread.start()
         # self.stts_thread = STTSThread()
         # self.stts_thread.stt_signal.connect(self.update_stt_label)
         # self.stts_thread.tts_signal.connect(self.update_tts_label)
         # self.stts_thread.start()
 
-        self.tts_text = ""
+        # set fonts 
+        self.set_fonts(hangul_label_names=['stt', 'tts', 'vlm_text'])
+        # vlm control flag 
+        self.allow_vlm_ctrl = False
         print("GUI initialized")
 
     def initUI(self):
@@ -143,13 +147,24 @@ class DemoQtWidget(QWidget):
             part_layout.addWidget(info_label)
             text_button_layout.addLayout(part_layout)
 
-        # 2. kill button
-        kill_layout = QVBoxLayout()
+        # 2. vlm control & kill button
+        vlm_cmd_and_kill_layout = QVBoxLayout()
+        button_layout = QHBoxLayout()
+        # vlm control button
+        vlm_ctrl_btn = QPushButton('Allow VLM Control', self)
+        vlm_ctrl_btn.setFixedSize(150, 100) 
+        vlm_ctrl_btn.clicked.connect(lambda checked, name='vlm_control': self.vlm_control_callback())
+        button_layout.addWidget(vlm_ctrl_btn)
+        # kill button 
         kill_btn = QPushButton('Kill', self)
-        kill_btn.setFixedSize(300, 150) 
+        kill_btn.setFixedSize(150, 100) 
         kill_btn.clicked.connect(lambda checked, name='kill': self.kill_callback())
-        kill_layout.addWidget(kill_btn)
-        text_button_layout.addLayout(kill_layout)
+        button_layout.addWidget(kill_btn)
+        vlm_cmd_and_kill_layout.addLayout(button_layout)
+        # label
+        self.state_labels['vlm_control_and_kill'] = QLabel("GUI is controlling the robot", self)
+        vlm_cmd_and_kill_layout.addWidget(self.state_labels['vlm_control_and_kill'])
+        text_button_layout.addLayout(vlm_cmd_and_kill_layout)
 
         # 3-1. VLM label - buttons & image, text
         image_button_layout = QHBoxLayout()
@@ -164,6 +179,7 @@ class DemoQtWidget(QWidget):
         part_layout.addWidget(state_label)
         # Information label
         image_info_label = QLabel(f"Server communication not initialized", self)
+        image_info_label.setPixmap(self.placeholder_image)
         self.info_labels['vlm_image'] = image_info_label
         text_info_label = QLabel(f"Server communication not initialized", self)
         self.info_labels['vlm_text'] = text_info_label
@@ -178,30 +194,50 @@ class DemoQtWidget(QWidget):
         vlm_query_btn.clicked.connect(lambda checked, name='vlm_query': self.vlm_query_callback())
         part_layout.addWidget(vlm_query_btn)
         # label
-        vlm_query_state_label = QLabel("VLM Query: OFF", self)
+        vlm_query_state_label = QLabel("Send VLM Query", self)
         self.state_labels['vlm_query'] = vlm_query_state_label
         part_layout.addWidget(vlm_query_state_label)
         image_button_layout.addLayout(part_layout)
 
         # 4. User Tracking & Patrol label - buttons & image
         self.image_buttons = ['usertracking', 'patrol']
-        for btn_name in self.image_buttons:
-            part_layout = QVBoxLayout()
-            # button
-            btn = QPushButton(f"{btn_name} ON/OFF", self)
-            btn.clicked.connect(lambda checked, name=btn_name: self.state_callback(name))
-            part_layout.addWidget(btn)
-            # on/off state
-            state_label = QLabel(f"{btn_name}: OFF", self)
-            self.state_labels[btn_name] = state_label
-            part_layout.addWidget(state_label)
-            # Information label
-            info_label = QLabel(f"Server communication not initialized", self)
-            self.info_labels[btn_name] = info_label
-            dummy_label = QLabel("") # to keep the same layout even if no image
-            part_layout.addWidget(info_label)
-            part_layout.addWidget(dummy_label)
-            image_button_layout.addLayout(part_layout)
+        part_layout = QVBoxLayout()
+        # button
+        btn = QPushButton(f"usertracking ON/OFF", self)
+        btn.clicked.connect(lambda checked, name='usertracking': self.state_callback(name))
+        part_layout.addWidget(btn)
+        # on/off state
+        state_label = QLabel(f"usertracking: OFF", self)
+        self.state_labels['usertracking'] = state_label
+        part_layout.addWidget(state_label)
+        # Information label
+        info_label = QLabel(f"Server communication not initialized", self)
+        info_label.setPixmap(self.placeholder_image)
+        self.info_labels['usertracking'] = info_label
+        # track id button 
+        track_id_button = QPushButton("Update Tracking ID", self)
+        track_id_button.clicked.connect(self.update_tracking_id_callback)
+        part_layout.addWidget(info_label)
+        part_layout.addWidget(track_id_button)
+        image_button_layout.addLayout(part_layout)
+        # patrol
+        part_layout = QVBoxLayout()
+        btn = QPushButton(f"patrol ON/OFF", self)
+        btn.clicked.connect(lambda checked, name='patrol': self.state_callback(name))
+        part_layout.addWidget(btn)
+        state_label = QLabel(f"patrol: OFF", self)
+        self.state_labels['patrol'] = state_label
+        part_layout.addWidget(state_label)
+        # Information label
+        info_label = QLabel(f"Server communication not initialized", self)
+        info_label.setPixmap(self.placeholder_image)
+        self.info_labels['patrol'] = info_label
+        dummy_label = QLabel("") # to keep the same layout even if no image
+        part_layout.addWidget(info_label)
+        part_layout.addWidget(dummy_label)
+        image_button_layout.addLayout(part_layout)
+
+
 
         # 5. set main layout
         main_layout.addLayout(text_button_layout)
@@ -213,24 +249,57 @@ class DemoQtWidget(QWidget):
     """ STATE CALLBACK """
     def state_callback(self, client_name):
         # update state
-        self.states[client_name] = not self.states[client_name] # toggle state
-        state_text = f"{client_name}: ON" if self.states[client_name] else f"{client_name}: OFF"
-        self.state_labels[client_name].setText(state_text)
+        if not self.allow_vlm_ctrl:
+            self.states[client_name] = not self.states[client_name] # toggle state
+            state_text = f"{client_name}: ON" if self.states[client_name] else f"{client_name}: OFF"
+            self.state_labels[client_name].setText(state_text)
 
     """ KILL CALLBACK """
     def kill_callback(self):
         self.states = {comp: False for comp in self.components} # reset all states to off
         for label in self.state_labels.values():
             label.setText(f"{label.text().split(':')[0]}: OFF")
+        self.state_labels['vlm_control_and_kill'].setText("All systems killed")
 
     """ VLM QUERY CALLBACK """
     def vlm_query_callback(self):
-        if self.states['vlm']:
+        if self.states['vlm'] and self.vlm_thread.send_flag == False:
             self.vlm_thread.send_flag = True
             self.state_labels['vlm_query'].setText("VLM Query: TALKING...")
             time.sleep(0.1) # wait for thread to process
         else:
             self.state_labels['vlm_query'].setText("VLM Query: OFF - Turn on VLM first")
+
+    """ VLM CONTROL CALLBACK: ALLOW VLM TO CONTROL """
+    def vlm_control_callback(self): 
+        self.allow_vlm_ctrl = not self.allow_vlm_ctrl
+        if self.allow_vlm_ctrl:
+            # set patrol and usertracking state false
+            self.states['patrol'] = False
+            self.states['usertracking'] = False
+            self.states['vlm'] = True
+            self.state_labels['patrol'].setText("patrol: OFF")
+            self.state_labels['usertracking'].setText("usertracking: OFF")
+            self.state_labels['vlm'].setText("vlm: ON")
+            self.state_labels['vlm_control_and_kill'].setText("VLM is controlling the robot")
+        else:
+            self.states['patrol'] = False
+            self.states['usertracking'] = False
+            self.states['vlm'] = False
+            self.state_labels['patrol'].setText("patrol: OFF")
+            self.state_labels['usertracking'].setText("usertracking: OFF")
+            self.state_labels['vlm'].setText("vlm: OFF")
+            self.state_labels['vlm_control_and_kill'].setText("GUI is controlling the robot")
+
+    """ UPDATE TRACKING ID CALLBACK """
+    def update_tracking_id_callback(self):
+        if len(self.body_ids) == 0:
+            # no body id, stop
+            pass 
+        else: # if bodies
+            # target setting
+            pass
+
 
     # ====================================================================================
     """ UPDATE LABEL WITH SERVER DATA """
@@ -240,7 +309,6 @@ class DemoQtWidget(QWidget):
             self.info_labels['tts'].setText(text)
         else:
             self.info_labels['tts'].setText("TTS is OFF")
-        self.tts_text = text
 
     def update_stt_label(self, text):
         if self.states['stt']:
@@ -249,40 +317,60 @@ class DemoQtWidget(QWidget):
             self.info_labels['stt'].setText("STT is OFF")
 
     # ====================================================================================
-    def update_vlm_label(self, text, image):
+    def update_vlm_label(self, text, image, patrol_flag, usertracking_flag):
         if self.states['vlm']:
             print("vlm thread signal received in GUI, updating label...")
+            print("image shape in vlm update:", image.shape)
             # Update with image 
             pixmap = QPixmap()
             pixmap.loadFromData(image)
             scaled_pixmap = pixmap.scaled(
-                300, 200, # for testing, fixed size
+                300, 250, # for testing, fixed size
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
             self.info_labels['vlm_image'].setPixmap(scaled_pixmap)
             self.info_labels['vlm_text'].setText(text)
+
+            # patrol - usertracking turn on/off
+            if self.allow_vlm_ctrl == True:
+                if patrol_flag == True:
+                    self.states['patrol'] = True
+                    self.state_labels['patrol'].setText("patrol: ON")
+                else:
+                    self.states['patrol'] = False
+                    self.state_labels['patrol'].setText("patrol: OFF")
+                if usertracking_flag == True:
+                    self.states['usertracking'] = True
+                    self.state_labels['usertracking'].setText("usertracking: ON")
+                else:
+                    self.states['usertracking'] = False
+                    self.state_labels['usertracking'].setText("usertracking: OFF")
         else:
             self.info_labels['vlm_image'].setPixmap(self.placeholder_image)
             self.info_labels['vlm_text'].setText("VLM is OFF")
     
     # ====================================================================================
     def update_user_tracking_label(self, body_ids, image):
-        # TODO: send signal from thread: body_ids, image
-        # TODO: update with body ids & images
-        # TODO: add button to update body id (of self.target_id)
         if self.states['usertracking']:
             # Update with image 
             pixmap = QPixmap()
             pixmap.loadFromData(image)
             scaled_pixmap = pixmap.scaled(
-                300, 200, # for testing, fixed size
+                300, 250, # for testing, fixed size
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
             self.info_labels['usertracking'].setPixmap(scaled_pixmap)
+            # update body ids , start user tracking
+            self.body_ids = body_ids
+            self.usertracking_thread.client.navigation_resume_flag = True 
         else:
+            self.body_ids = []
             self.info_labels['usertracking'].setPixmap(self.placeholder_image)
+            self.usertracking_thread.client.navigation_resume_flag = False # stop navigation when usertracking is off
+            if self.usertracking_thread.client.navigation_status == "Navigating":
+                self.usertracking_thread.client.cancel_nav2_navigation()
 
     def update_patrol_label(self, image):
         # TODO: send signal from thread: body_ids, image
@@ -294,7 +382,7 @@ class DemoQtWidget(QWidget):
             pixmap = QPixmap()
             pixmap.loadFromData(image)
             scaled_pixmap = pixmap.scaled(
-                300, 200, 
+                300, 250, 
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
@@ -303,6 +391,14 @@ class DemoQtWidget(QWidget):
             self.patrol_thread.node.stop = True # patrol node stop flag true 
             self.info_labels['patrol'].setPixmap(self.placeholder_image) # show placeholder when patrol is off
             # or, place holder
+    
+    # ====================================================================================
+    def set_fonts(self, hangul_label_names = []):
+        for label_name in hangul_label_names:
+            if label_name in self.info_labels:
+                self.info_labels[label_name].setFont(QFont("NanumGothic", 10))
+                self.info_labels[label_name].setWordWrap(True)
+                self.info_labels[label_name].setFixedWidth(200)
 
 # if __name__ == '__main__':
 #     app = QApplication(sys.argv)

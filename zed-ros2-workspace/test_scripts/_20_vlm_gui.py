@@ -26,9 +26,11 @@ from gui.gui_threads import DemoQtWidget
 instruction_two_sentence = "지금부터 모든 응답은 두 문장 이내로 해줘."
 patrol_instruction = "앞으로 '순찰을 시작해줘'이라는 명령이 들어오면, '순찰을 시작하겠습니다'라고 한문장으로 대답해줘. 그리고 '순찰 종료'라는 명령이 들어오면, '순찰을 종료하겠습니다'라고 한문장으로 대답해줘."
 instruction_usertracking = "앞으로 '나를 따라와'이라는 명령이 들어오면, '네, 따라가겠습니다'라고 한문장으로 대답해줘. 그리고 '그만 따라와'라는 명령이 들어오면, '네, 멈추겠습니다'라고 한문장으로 대답해줘."
+instruction_require_answer = "이제 질문에 대답해줘."
 
 instruc = {}
 instruc["default"] = instruction_two_sentence + patrol_instruction + instruction_usertracking
+instruc["prefix"] = instruction_two_sentence
 instruc["hello"] = "이 이미지에서 무엇을 보고 있는지 알려줘."
 instruc["car"] = "이 이미지에서 차가 몇 대 있는지 알려줘."
 instruc["person"] = "이 이미지에서 사람은 몇 명인지 알려줘."
@@ -127,7 +129,7 @@ class VLLMClient():
         print(f"Warpup done, total {warmup_total_time:.2f}s")
         print("-" * 60)
 
-    def get_vlm_response(self, prompt: str = None, use_audio = False):
+    def get_vlm_response(self, prompt: str = None, use_audio = False, use_prefix = True):
         # stt 
         if prompt is None:
             print("Listening for STT input...")
@@ -136,6 +138,9 @@ class VLLMClient():
             print(f"STT result for VLM query: {prompt}")
         else: 
             print(f"Using provided prompt: {prompt}")
+        # prefix
+        if use_prefix:
+            prompt = instruc["prefix"] + " " + prompt
         # zed
         self.image = self.zed_client.grab_image()
         # vlm query 
@@ -155,7 +160,7 @@ class VLLMClient():
 
 
 class VLLMThread(QThread):
-    signal = pyqtSignal(str, object) # string 
+    signal = pyqtSignal(str, object, bool, bool) # string 
     def __init__(self, vlm_client):
         super().__init__()
 
@@ -164,6 +169,9 @@ class VLLMThread(QThread):
         self.client.get_vlm_response(prompt=instruc["default"])
         self.send_flag = False
 
+        self.patrol_flag = False 
+        self.usertracking_flag = False
+
     def run(self):
         while True:
             # print("vlm thread is spinning!")
@@ -171,13 +179,30 @@ class VLLMThread(QThread):
                 print("VLLMThread: send_flag is True, getting response...")
                 # answer, image = self.client.get_vlm_response(prompt = instruc["person"])
                 answer, image = self.client.get_vlm_response(use_audio=False)
-                print(f"Answer: {answer}")
+                # downsample image 
+                image = cv2.resize(image, (300, 250))
                 self.send_flag = False
+                print("image shape:", image.shape)
 
-                self.signal.emit(answer, image)
+                # user tracking & patrol check
+                # VLM to Action mapping words!!!! <<<--- <<<--- <<<--- <<<---<<<---
+                patrol_words = ["순찰", "시작"]
+                usertracking_word = "따라"
+                end_word = ["종료", "완료", "도착", "멈추", "멈춰", "멈추겠습니다"]
+
+                if patrol_words[0] in answer and self.usertracking_flag == False:
+                    if patrol_words[1] in answer:
+                        # turn on patrol
+                        self.patrol_flag = True
+                if usertracking_word in answer and self.patrol_flag == False:
+                    self.usertracking_flag = True 
+                if any(word in answer for word in end_word):
+                    self.patrol_flag = False 
+                    self.usertracking_flag = False
+
+                self.signal.emit(answer, image, self.patrol_flag, self.usertracking_flag)
                 time.sleep(0.1)
             else:
-                # print("VLLMThread: send_flag is False, skipping...")
                 pass
 
 def main():
@@ -192,7 +217,7 @@ def main():
     qt_widget = DemoQtWidget(
         vlm_thread=vlm_thread,
         patrol_thread=None,
-        user_tracking_thread=None
+        usertracking_thread=None
     )
     qt_widget.show()
     app.exec_()
