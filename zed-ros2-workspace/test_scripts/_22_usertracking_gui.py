@@ -68,6 +68,13 @@ class humanTracking(Node):
 
         # Init cv2 window
         self.image_display = self.zed_client.grab_image()
+        if self.zed_client.shm_image_block is None:
+            print("[CLIENT] Image shared memory not available. Is the server running?")
+            return
+        self.image_width = self.zed_client.image_shape[1]
+        self.image_height = self.zed_client.image_shape[0]
+        # cv2.namedWindow("ZED Client - Body Tracking", cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow("ZED Client - Body Tracking", self.image_width, self.image_height)
 
         # Init ROS2 Components
         self.pub_face_pose = self.create_publisher(PoseStamped, 'goal_update', 10)
@@ -95,13 +102,13 @@ class humanTracking(Node):
         image = self.zed_client.grab_image()
         image_display = image.copy()
         bodies = self.zed_client.grab_bodies()
+        print(self.target_id)
 
         if bodies is not None and len(bodies) > 0:
             image_display = self.overlay_bodies_on_image(image_display, bodies)
             self.body_ids = self.get_body_ids(bodies)
-            # if self.target_id not in body_ids: # No target id found
-            #     self.target_id = body_ids[0]
-            # target_index = body_ids.index(self.target_id)
+            if self.target_id not in self.body_ids: # No target id found
+                self.target_id = self.body_ids[0]
             for body in bodies:
                 body_id = body['id']
                 _, bbox = self.crop_face(image_display, body)
@@ -123,25 +130,24 @@ class humanTracking(Node):
             - if cannceled -> resume with checking resume flag 
         """
         if self.navigation_status != "Navigating" and self.navigation_resume_flag == True:
-            # if self.target_id in self.body_ids:
-            #     print("Initializing Navigation to target id: ", self.target_id)
-            #     self.pantilt_command = [0., -30.]
-            #     self.publish_pantilt_command()
-            #     self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
-            #     self.navigatioin_resume_flag = False
-            # else:
-            #     print("No target id found in the scene. Cannot start navigation.")
+            if self.target_id in self.body_ids:
+                print("Initializing Navigation to target id: ", self.target_id)
+                self.pantilt_command = [0., -30.]
+                self.publish_pantilt_command()
+                self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
+            else:
+                print("No target id found in the scene. Cannot start navigation.")
             
             # test
-            print("Initializing Navigation to target id: ", self.target_id)
-            self.pantilt_command = [0., -30.]
-            self.publish_pantilt_command()
-            self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
-            self.navigatioin_resume_flag = False
-            self.navigation_resume_flag = False # wait until target id is found to start navigation
-        elif self.navigation_status != "Navigating" and self.navigation_resume_flag == False:
-            # no resume, cancelled, just standing 
-            pass
+        #     print("Initializing Navigation to target id: ", self.target_id)
+        #     self.pantilt_command = [0., -30.]
+        #     self.publish_pantilt_command()
+        #     self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
+        #     self.navigatioin_resume_flag = False
+        #     self.navigation_resume_flag = False # wait until target id is found to start navigation
+        # elif self.navigation_status != "Navigating" and self.navigation_resume_flag == False:
+        #     # no resume, cancelled, just standing 
+        #     pass
 
     """___NAVIGATION FUNCTIONS___"""
     def send_navigation_goal(self, goal, frame_id='map'):
