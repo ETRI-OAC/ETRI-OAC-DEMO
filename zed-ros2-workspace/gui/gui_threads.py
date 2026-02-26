@@ -73,7 +73,7 @@ class DemoQtWidget(QWidget):
 
         # placeholder image
         placeholder_path = "./placeholder.jpg"
-        self.placeholder_image = QPixmap(300, 200)  # Placeholder size
+        self.placeholder_image = QPixmap(300, 250)  # Placeholder size
         # Load placeholder image if exists
         if os.path.exists(placeholder_path):
             self.placeholder_image.load(placeholder_path)
@@ -334,13 +334,7 @@ class DemoQtWidget(QWidget):
             print("vlm thread signal received in GUI, updating label...")
             print("image shape in vlm update:", image.shape)
             # Update with image 
-            pixmap = QPixmap()
-            pixmap.loadFromData(image)
-            scaled_pixmap = pixmap.scaled(
-                300, 250, # for testing, fixed size
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
+            scaled_pixmap = zed_image_to_qpixmap(image)
             self.info_labels['vlm_image'].setPixmap(scaled_pixmap)
             self.info_labels['vlm_text'].setText(text)
 
@@ -376,13 +370,7 @@ class DemoQtWidget(QWidget):
             self.states["vlm"] = True
             self.vlm_thread.client.warning_flag = True
             # Update with image 
-            pixmap = QPixmap()
-            pixmap.loadFromData(image)
-            scaled_pixmap = pixmap.scaled(
-                300, 250, # for testing, fixed size
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
+            scaled_pixmap = zed_image_to_qpixmap(image)
             self.info_labels['usertracking'].setPixmap(scaled_pixmap)
             # what's modified: resume flag no update
             # self.usertracking_thread.client.navigation_resume_flag = True 
@@ -396,13 +384,7 @@ class DemoQtWidget(QWidget):
     def update_patrol_label(self, image):
         if self.states['patrol']:
             self.patrol_thread.client.stop = False
-            pixmap = QPixmap()
-            pixmap.loadFromData(image)
-            scaled_pixmap = pixmap.scaled(
-                300, 250, 
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
+            scaled_pixmap = zed_image_to_qpixmap(image)
             self.info_labels['patrol'].setPixmap(scaled_pixmap)
         else:
             self.patrol_thread.client.stop = True # patrol node stop flag true 
@@ -416,6 +398,16 @@ class DemoQtWidget(QWidget):
                 self.info_labels[label_name].setFont(QFont("NanumGothic", 10))
                 self.info_labels[label_name].setWordWrap(True)
                 self.info_labels[label_name].setFixedWidth(200)
+
+
+""" UTILS: ZED TO QIMAGE """
+def zed_image_to_qpixmap(zed_image):
+    height, width, channel = zed_image.shape
+    bytes_per_line = channel * width
+    qimg = QImage(zed_image.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+    qpixmap = QPixmap.fromImage(qimg)
+    qpixmap_scaled = qpixmap.scaled(300, 250)
+    return qpixmap_scaled
 
 # if __name__ == '__main__':
 #     app = QApplication(sys.argv)

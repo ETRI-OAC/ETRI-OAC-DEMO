@@ -7,9 +7,6 @@ import time
 import numpy as np
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from clients.zed_client import ZedClient
-from clients.tts_client import TTSClient
-from clients.face_recognition_client import FaceRecognitionClient
-from clients.vlm_client import VLLMClient
 from zed_wrapper.body_tracking_visualizer import visualize_bodies_2d
 from utils.pid import PIDControllerClass
 

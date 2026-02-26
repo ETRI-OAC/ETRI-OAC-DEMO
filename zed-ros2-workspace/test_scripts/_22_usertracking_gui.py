@@ -7,6 +7,7 @@ import time
 import numpy as np
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from clients.zed_client import ZedClient
+from clients.stt_client import STTClient
 from clients.tts_client import TTSClient
 from clients.face_recognition_client import FaceRecognitionClient
 from clients.vlm_client import VLLMClient
@@ -35,11 +36,12 @@ WAYPOINTS = [((-2.88689, -1.29752, 0., 0., 0., -0.417859, 0.908512)), #(x,y,z,qx
 ]
 
 class humanTracking(Node):
-    def __init__(self):
+    def __init__(self, zed_client, tts_client):
         super().__init__('human_tracking')
-        self.zed_client = ZedClient()
-        self.tts_client = TTSClient()
-        self.vlm_client = VLLMClient(tts_client=self.tts_client)
+        self.zed_client = zed_client
+        self.tts_client = tts_client
+        # what's modified: vllm client separated to another thread
+        # self.vlm_client = VLLMClient(tts_client=self.tts_client)
         
         # Init face recognition
         self.face_recognition_client = FaceRecognitionClient()
@@ -102,13 +104,13 @@ class humanTracking(Node):
         image = self.zed_client.grab_image()
         image_display = image.copy()
         bodies = self.zed_client.grab_bodies()
-        print(self.target_id)
 
         if bodies is not None and len(bodies) > 0:
             image_display = self.overlay_bodies_on_image(image_display, bodies)
             self.body_ids = self.get_body_ids(bodies)
-            if self.target_id not in self.body_ids: # No target id found
-                self.target_id = self.body_ids[0]
+            # what's modified: exception for 0 index -> disabled
+            # if self.target_id not in self.body_ids: # No target id found
+            #     self.target_id = self.body_ids[0]
             for body in bodies:
                 body_id = body['id']
                 _, bbox = self.crop_face(image_display, body)
@@ -453,7 +455,6 @@ class UsertrackingThread(QThread):
         while True:
             # spin ros2 node
             rclpy.spin_once(self.client)
-            print("ros2 node spinning!")
             print("navigation status: ", self.client.navigation_status)
             print("resume flag: ", self.client.navigation_resume_flag)
             self.signal.emit(self.client.body_ids ,self.client.image_display) # image
@@ -461,11 +462,24 @@ class UsertrackingThread(QThread):
 
 def main():
     app = QApplication(sys.argv)
+    # what's modified: all clients declared outside thread
+    stt_client = STTClient()
+    tts_client = TTSClient()
+    zed_client = ZedClient()
     rclpy.init()
-    usertracking_client = humanTracking()
+    usertracking_client = humanTracking(zed_client=zed_client, tts_client=tts_client)
     usertracking_thread = UsertrackingThread(usertracking_client)
+    # what's modified: vllm client separated to another thread
+    vllm_client = VLLMClient(
+        api_url = "http://localhost:8000",
+        stt_client = stt_client,
+        tts_client = tts_client,
+        zed_client=zed_client
+    )
+    vlm_thread = VLLMThread(vllm_client)
+    # what's modified: vllm thread works!
     qt_widget = DemoQtWidget(
-        vlm_thread=None,
+        vlm_thread=vlm_thread,
         patrol_thread=None,
         usertracking_thread=usertracking_thread
     )

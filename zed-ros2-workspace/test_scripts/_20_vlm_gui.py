@@ -187,7 +187,7 @@ class VLLMThread(QThread):
                 # downsample image 
                 image = cv2.resize(image, (300, 250))
                 self.send_flag = False
-                print("image shape:", image.shape)
+                # print("image shape:", image.shape)
 
                 # user tracking & patrol check
                 # VLM to Action mapping words!!!! <<<--- <<<--- <<<--- <<<---<<<---
@@ -201,6 +201,22 @@ class VLLMThread(QThread):
                         self.patrol_flag = True
                 if usertracking_word in answer and self.patrol_flag == False:
                     self.usertracking_flag = True 
+                if any(word in answer for word in end_word):
+                    self.patrol_flag = False 
+                    self.usertracking_flag = False
+
+                self.signal.emit(answer, image, self.patrol_flag, self.usertracking_flag)
+                time.sleep(0.1)
+
+            # what's modified: when warning flag, keep checking the scene
+            elif self.warning_flag:
+                print("VLLMThread: vlm is on user tracking, checking hazardous conditions...")
+                # answer, image = self.client.get_vlm_response(prompt = instruc["person"])
+                answer, image = self.client.get_vlm_response(prompt = instruc["user_track_warning"],use_audio=False)
+                # downsample image 
+                image = cv2.resize(image, (300, 250))
+
+                end_word = ["종료", "완료", "도착", "멈추", "멈춰", "멈추겠습니다"]
                 if any(word in answer for word in end_word):
                     self.patrol_flag = False 
                     self.usertracking_flag = False
