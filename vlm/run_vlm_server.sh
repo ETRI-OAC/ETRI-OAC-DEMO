@@ -19,7 +19,8 @@ else
   #   "$IMAGE" $VLLM_CMD
   docker run -it --name "$CONTAINER_NAME" --runtime=nvidia --network host \
     --pull never \
-    -e HF_HUB_OFFLINE=1 \
-    -e TRANSFORMERS_OFFLINE=1 \
     "$IMAGE" $VLLM_CMD
 fi
+
+    # -e HF_HUB_OFFLINE=1 \
+    # -e TRANSFORMERS_OFFLINE=1 \
