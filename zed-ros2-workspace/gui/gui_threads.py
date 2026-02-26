@@ -371,13 +371,12 @@ class DemoQtWidget(QWidget):
             scaled_pixmap_usertracking = zed_image_to_qpixmap(image)
             self.info_labels['usertracking'].setPixmap(scaled_pixmap_usertracking)
             # what's modified: resume flag no update
-            # self.usertracking_thread.client.navigation_resume_flag = True 
+            if self.usertracking_thread.client.navigation_resume_flag == False:
+                self.usertracking_thread.client.navigation_resume_flag = True
         else:
             self.body_ids = ["-1"]
             self.info_labels['usertracking'].setPixmap(self.placeholder_image)
             self.usertracking_thread.client.navigation_resume_flag = False # stop navigation when usertracking is off
-            if self.usertracking_thread.client.navigation_status == "Navigating":
-                self.usertracking_thread.client.cancel_nav2_navigation()
 
     def update_patrol_label(self, image):
         if self.states['patrol']:

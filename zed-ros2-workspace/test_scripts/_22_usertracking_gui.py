@@ -93,6 +93,7 @@ class humanTracking(Node):
         self.pantilt_command = [0., -30.]
         for _ in range(30):
             self.publish_pantilt_command()
+            rclpy.spin_once(self)
             time.sleep(0.02)
 
     """___MAIN LOOP___"""
