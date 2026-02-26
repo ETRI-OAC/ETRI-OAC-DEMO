@@ -58,7 +58,7 @@ class humanTracking(Node):
         # Init pan-tilt
         self.pantilt_state = [0., -30.]
         self.pantilt_command = [0., -30.]
-        self.pid = PIDControllerClass(k_p= 30, k_d = 1, out_min=-30, out_max=30, dim=1, out_alpha=0.5)
+        self.pid = PIDControllerClass(k_p= 30, k_d = 1, out_min=-30, out_max=30, dim=1, out_alpha=0.6)
         self.pid.reset()
         self.center_cam_xy = np.array([self.zed_client.image_shape[1]/2, self.zed_client.image_shape[0]/2])
         self.t_s = time.time()
@@ -87,6 +87,7 @@ class humanTracking(Node):
         self.subscription = self.create_subscription(GoalStatusArray,'/navigate_to_pose/_action/status',self.nav_status_callback, 1)
         self.main_timer = self.create_timer(0.02, self.main_timer_callback)
         self.reset_nav_timer = self.create_timer(1.0, self.reset_nav_timer_callback)
+        self.timer_flag = False
 
         # Init pan-tilt pose
         self.pantilt_command = [0., -30.]
@@ -104,26 +105,26 @@ class humanTracking(Node):
 
         # Update Image and Bodies from ZED
         image = self.zed_client.grab_image()
-        image_display = image.copy()
+        self.image_display = image.copy()
         bodies = self.zed_client.grab_bodies()
 
         if bodies is not None and len(bodies) > 0:
-            image_display = self.overlay_bodies_on_image(image_display, bodies)
+            self.image_display = self.overlay_bodies_on_image(self.image_display, bodies)
             self.body_ids = self.get_body_ids(bodies)
             # what's modified: exception for 0 index -> disabled
             # if self.target_id not in self.body_ids: # No target id found
             #     self.target_id = self.body_ids[0]
             for body in bodies:
                 body_id = body['id']
-                _, bbox = self.crop_face(image_display, body)
+                _, bbox = self.crop_face(self.image_display, body)
                 if body_id == self.target_id:
                     self.publish_face_pose(body)
                     self.move_pantilt(body)
                     if bbox is not None:
-                        image_display = self.overlay_face_bbox(image_display, bbox, body_id, name="tracking target")
+                        self.image_display = self.overlay_face_bbox(self.image_display, bbox, body_id, name="tracking target")
                 elif bbox is not None:
-                    image_display = self.overlay_face_bbox(image_display, bbox, body_id, name="unknown")
-                
+                    self.image_display = self.overlay_face_bbox(self.image_display, bbox, body_id, name="unknown")
+        self.timer_flag = True
         # self.imshow(image_display)
     
     def reset_nav_timer_callback(self):
@@ -454,16 +455,20 @@ class UsertrackingThread(QThread):
         self.client = usertracking_client
 
     def run(self):
-        iter = 0
+        iterations = 0
         while True:
-            iter += 1
             # spin ros2 node
             rclpy.spin_once(self.client)
-            print("navigation status: ", self.client.navigation_status)
-            print("resume flag: ", self.client.navigation_resume_flag)
-            if iter > 20:
+            if self.client.timer_flag:
+                self.client.timer_flag = False
+                iterations += 1
+            # print("navigation status: ", self.client.navigation_status)
+            # print("resume flag: ", self.client.navigation_resume_flag)
+            # print("iter:", iterations)
+            # print("current target: ", self.client.target_id)
+            if iterations > 30:
                 self.signal.emit(self.client.body_ids ,self.client.image_display) # image
-                iter = 0
+                iterations = 0
             
 def main():
     app = QApplication(sys.argv)
@@ -485,6 +490,7 @@ def main():
     # what's modified: vllm thread works!
     qt_widget = DemoQtWidget(
         vlm_thread=vlm_thread,
+        # vlm_thread=None,
         patrol_thread=None,
         usertracking_thread=usertracking_thread
     )

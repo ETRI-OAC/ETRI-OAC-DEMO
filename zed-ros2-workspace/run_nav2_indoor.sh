@@ -11,7 +11,7 @@ DOCKER_COMPOSE_FILE="docker-compose.yaml"
 COMMAND="""source "/opt/ros/humble/install/setup.bash" && \
 source "/opt/ros/humble/setup.bash" && \
 source "/root/ros2_ws/install/local_setup.bash" && \
-ros2 launch nav2_bringup bringup_launch.py map:=/root/workspace/zed-ros2-workspace/SLAM_Nav/map/map.yaml params_file:=/root/workspace/zed-ros2-workspace/SLAM_Nav/config/nav2_params.yaml"""
+ros2 launch nav2_bringup bringup_launch.py map:=/root/workspace/zed-ros2-workspace/SLAM_Nav/map/map_etri.yaml params_file:=/root/workspace/zed-ros2-workspace/SLAM_Nav/config/nav2_params.yaml"""
 
 # Must run compose from docker dir so volume ../../ resolves to project root
 cd "$DOCKER_DIR"

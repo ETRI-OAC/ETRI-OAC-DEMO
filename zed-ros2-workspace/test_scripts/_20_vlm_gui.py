@@ -40,8 +40,8 @@ instruc["initialize_patrol"] = "순찰 시작"
 instruc["terminate_patrol"] = "순찰 종료"
 
 # what's modified: warning instruction 
-instruc["user_track_warning"] = "지금 보고 있는 이미지에 차량이나 자전거가 있다면, '위험, 전방에 차량이 있습니다.' 혹은 '위험, 전방에 자전거가 있습니다.' 라고 답해줘. 만약 없을 경우에는, 아무 대답도 하지 마."
-
+# instruc["user_track_warning"] = "지금 보고 있는 이미지에 차량이나 자전거가 있다면, '위험, 전방에 차량이 있습니다.' 혹은 '위험, 전방에 자전거가 있습니다.' 라고 답해줘. 만약 없을 경우에는, 아무 대답도 하지 마."
+instruc["user_track_warning"] = "지금 보고 있는 이미지에 차량이나 자전거가 있다면, [위험, 전방에 (물체 이름) 가 있습니다.] 라고 대답하고, 없으면 [안전] 이라고 대답해."
 
 """ UTILS """
 # 1. encode image
@@ -78,6 +78,7 @@ class VLLMClient():
         self.tts_client = tts_client
         self.zed_client = zed_client
         self.image = self.zed_client.grab_image()
+        self.warning_flag = False
 
     def query(self, prompt: str, measure_time: bool = False) -> Tuple[Dict[str, Any], Optional[float]]:
         base64_image = encode_image(self.image)
@@ -161,21 +162,53 @@ class VLLMClient():
             print("Unexpected response format.")
             return None, None
 
+    def get_vlm_response_safety(self, prompt: str = None, use_audio = False, use_prefix = True):
+        # stt 
+        if prompt is None:
+            print("Listening for STT input...")
+            response, _ = self.stt_client.transcribe_from_mic(duration_sec=5)
+            prompt = response.get("text", "")
+            print(f"STT result for VLM query: {prompt}")
+        else: 
+            print(f"Using provided prompt: {prompt}")
+        # prefix
+        if use_prefix:
+            prompt = instruc["prefix"] + " " + prompt
+        # zed
+        self.image = self.zed_client.grab_image()
+        # vlm query 
+        response, elapsed_time = self.query(prompt, measure_time=True)
+
+        if "choices" in response and len(response["choices"]) > 0:
+            answer = response["choices"][0]["message"]["content"]
+            print("-" * 60)
+            print(f"Response received, answer: {answer}")
+            print("-" * 60)
+            if "위험" in answer and use_audio:
+                self.tts_client.speak(answer)
+            return answer, self.image
+        else:
+            print("Unexpected response format.")
+            return None, None
+
+
 
 class VLLMThread(QThread):
     signal = pyqtSignal(str, object, bool, bool) # string 
-    def __init__(self, vlm_client):
+    def __init__(self, vlm_client, use_audio = True):
         super().__init__()
 
         self.client = vlm_client
-        self.client.warmup(prompt=instruc["default"], count=1)
+        self.client.warmup(prompt=instruc["default"], count=0)
         self.client.get_vlm_response(prompt=instruc["default"])
         self.send_flag = False
         # what's modified: warning flag
-        self.warning_flag = False
+        # self.warning_flag = False
 
         self.patrol_flag = False 
         self.usertracking_flag = False
+
+        self.use_audio = use_audio
 
     def run(self):
         while True:
@@ -183,7 +216,7 @@ class VLLMThread(QThread):
             if self.send_flag:
                 print("VLLMThread: send_flag is True, getting response...")
                 # answer, image = self.client.get_vlm_response(prompt = instruc["person"])
-                answer, image = self.client.get_vlm_response(use_audio=False)
+                answer, image = self.client.get_vlm_response(use_audio=self.use_audio)
                 # downsample image 
                 image = cv2.resize(image, (300, 250))
                 self.send_flag = False
@@ -209,10 +242,10 @@ class VLLMThread(QThread):
                 time.sleep(0.1)
 
             # what's modified: when warning flag, keep checking the scene
-            elif self.warning_flag:
+            elif self.client.warning_flag:
                 print("VLLMThread: vlm is on user tracking, checking hazardous conditions...")
                 # answer, image = self.client.get_vlm_response(prompt = instruc["person"])
-                answer, image = self.client.get_vlm_response(prompt = instruc["user_track_warning"],use_audio=False)
+                answer, image = self.client.get_vlm_response_safety(prompt = instruc["user_track_warning"],use_audio=self.use_audio)
                 # downsample image 
                 image = cv2.resize(image, (300, 250))
 
@@ -225,6 +258,7 @@ class VLLMThread(QThread):
                 time.sleep(0.1)
             else:
                 pass
+            time.sleep(0.1)
 
 def main():
     app = QApplication(sys.argv)

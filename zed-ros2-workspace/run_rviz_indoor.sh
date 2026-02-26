@@ -10,8 +10,9 @@ CONTAINER_NAME="base-zed_ros2_env-1"
 DOCKER_COMPOSE_FILE="docker-compose.yaml"
 COMMAND="""source "/opt/ros/humble/install/setup.bash" && \
 source "/opt/ros/humble/setup.bash" && \
-source "/root/ros2_ws/install/local_setup.bash" && \
-cd /root/workspace/zed-ros2-workspace/SLAM_Nav && ros2 run rviz2 rviz2 -d $(ros2 pkg prefix nav2_bringup)/share/nav2_bringup/rviz/nav2_default_view.rviz"""
+source "/root/ros2_ws/install/local_setup.bash" && \ """
+
+# cd /root/workspace/zed-ros2-workspace/SLAM_Nav && ros2 run rviz2 rviz2 -d $(ros2 pkg prefix nav2_bringup)/share/nav2_bringup/rviz/nav2_default_view.rviz"""
 
 # Must run compose from docker dir so volume ../../ resolves to project root
 cd "$DOCKER_DIR"

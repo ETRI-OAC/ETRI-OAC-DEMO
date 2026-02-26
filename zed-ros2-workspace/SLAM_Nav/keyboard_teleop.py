@@ -84,20 +84,20 @@ class KeyboardTeleop(Node):
             cmd_vel = Twist()
             print(f'Key {key.char} pressed')
             if key.char == 'w': # go forward
-                cmd_vel.linear.x = 0.1
+                cmd_vel.linear.x = 0.4
                 cmd_vel.linear.y = 0.0
                 cmd_vel.angular.z = 0.0
             elif key.char == 'x': # go backward
-                cmd_vel.linear.x = -0.1
+                cmd_vel.linear.x = -0.4
                 cmd_vel.linear.y = 0.0
                 cmd_vel.angular.z = 0.0
             elif key.char == 'a': # go left
                 cmd_vel.linear.x = 0.0
-                cmd_vel.linear.y = 0.1
+                cmd_vel.linear.y = 0.4
                 cmd_vel.angular.z = 0.0
             elif key.char == 'd': # go right
                 cmd_vel.linear.x = 0.0
-                cmd_vel.linear.y = -0.1
+                cmd_vel.linear.y = -0.4
                 cmd_vel.angular.z = 0.0
             elif key.char == 'q': # turn left
                 cmd_vel.angular.z = 0.3

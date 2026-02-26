@@ -19,49 +19,40 @@ class STTSThread(QThread):
     def __init__(
             self,
             timeout = 1,
-            stt_port = 8000, # should be modified
-            tts_port = 8001, # should be modified
+            stt_port = 8001,
+            tts_port = 8002,
             ):
         super().__init__()
-        # list of pyqtsignals
-        self.signals = {
-            'stt': self.stt_signal,
-            'tts': self.tts_signal,
-            'kill': None,
-        }
         self.timeout = timeout
-        self.default_image = np.ones((480, 640, 3), dtype=np.uint8)  # Placeholder for raw image data
         self.stt_port = stt_port
         self.tts_port = tts_port
         self.ip = "127.0.0.1"
 
     def fetch_stt_data(self):
         url = f"http://{self.ip}:{self.stt_port}/gui"
-        current_signal = self.signals.get('stt')
         try:
             response = requests.get(url, timeout=self.timeout)
             data = response.json()
             server_message = data.get("output", "No text received")
-            current_signal.emit(server_message)
+            self.stt_signal.emit(server_message)
         except Exception as e:
-            current_signal.emit(f"Error: {str(e)}")
+            self.stt_signal.emit(f"Error: {str(e)}")
 
     def fetch_tts_data(self):
         url = f"http://{self.ip}:{self.tts_port}/gui"
-        current_signal = self.signals.get('tts')
         try:
             response = requests.get(url, timeout=self.timeout)
             data = response.json()
             server_message = data.get("output", "No text received")
-            current_signal.emit(server_message)
+            self.tts_signal.emit(server_message)
         except Exception as e:
-            current_signal.emit(f"Error: {str(e)}")
+            self.tts_signal.emit(f"Error: {str(e)}")
 
     def run(self):
         while True:
             self.fetch_stt_data()
             self.fetch_tts_data()
-            time.sleep(0.01)
+            time.sleep(0.1)
 
 class DemoQtWidget(QWidget):
     def __init__(
@@ -87,8 +78,9 @@ class DemoQtWidget(QWidget):
             )
 
         # what's modified: body ids initialize 
-        self.body_ids = []
+        self.body_ids = ["-1"]
         self.target_id = -1
+        self.target_id_update_flag = False
         # UI initialization
         self.initUI()
 
@@ -108,10 +100,10 @@ class DemoQtWidget(QWidget):
             self.usertracking_thread = usertracking_thread
             self.usertracking_thread.signal.connect(self.update_user_tracking_label)
             self.usertracking_thread.start()
-        # self.stts_thread = STTSThread()
-        # self.stts_thread.stt_signal.connect(self.update_stt_label)
-        # self.stts_thread.tts_signal.connect(self.update_tts_label)
-        # self.stts_thread.start()
+        self.stts_thread = STTSThread()
+        self.stts_thread.stt_signal.connect(self.update_stt_label)
+        self.stts_thread.tts_signal.connect(self.update_tts_label)
+        self.stts_thread.start()
 
         
 
@@ -130,27 +122,25 @@ class DemoQtWidget(QWidget):
         main_layout.addWidget(self.title_label)
 
         # 0. components
-        self.components = ['stt', 'tts', 'kill', 'vlm', 'usertracking', 'patrol']
+        # self.components = ['stt', 'tts', 'kill', 'vlm', 'usertracking', 'patrol']
+        self.components = ['vlm', 'usertracking', 'patrol']
         self.states = {comp: False for comp in self.components} # all turned off at first time
         self.state_labels = {}
         self.info_labels = {}
 
         # 1. text label - buttons & states
         text_button_layout = QHBoxLayout()
-        self.text_buttons = ['stt', 'tts']
-        for btn_name in self.text_buttons:
+        self.stt_tts = ['stt', 'tts']
+        for name in self.stt_tts:
             part_layout = QVBoxLayout()
-            # button
-            btn = QPushButton(f"{btn_name} ON/OFF", self)
-            btn.clicked.connect(lambda checked, name=btn_name: self.state_callback(name))
-            part_layout.addWidget(btn)
+            # what's modified: button is deleted
             # on/off state
-            state_label = QLabel(f"{btn_name}: OFF", self)
-            self.state_labels[btn_name] = state_label
+            state_label = QLabel(f"{name} - output is: ", self)
+            self.state_labels[name] = state_label
             part_layout.addWidget(state_label)
             # Information label
             info_label = QLabel(f"Server communication not initialized", self)
-            self.info_labels[btn_name] = info_label
+            self.info_labels[name] = info_label
             part_layout.addWidget(info_label)
             text_button_layout.addLayout(part_layout)
 
@@ -310,29 +300,25 @@ class DemoQtWidget(QWidget):
     """ UPDATE TRACKING ID CALLBACK """
     # what's modified: update with combo
     def update_tracking_id_callback(self):
-        selected_idx = self.combo.currentText()
-        if selected_idx == "":
-            selected_idx = -1
-        else:
-            selected_idx = int(selected_idx)
-        self.usertracking_thread.client.target_id = selected_idx
-        self.target_id = selected_idx
+        if self.target_id_update_flag:
+            selected_idx = self.combo.currentText()
+            if selected_idx == "":
+                selected_idx = -1
+                self.usertracking_thread.client.target_id = selected_idx
+                self.target_id = selected_idx
+            else:
+                selected_idx = int(selected_idx)
+                self.usertracking_thread.client.target_id = selected_idx
+                self.target_id = selected_idx
 
 
     # ====================================================================================
-    """ UPDATE LABEL WITH SERVER DATA """
+    """ UPDATE TTS - STT INFO WITH STT THREAD """
     def update_tts_label(self, text):
-        # if state is on, update label with server text
-        if self.states['tts']:
-            self.info_labels['tts'].setText(text)
-        else:
-            self.info_labels['tts'].setText("TTS is OFF")
+        self.info_labels['tts'].setText(text)
 
     def update_stt_label(self, text):
-        if self.states['stt']:
-            self.info_labels['stt'].setText(text)
-        else:
-            self.info_labels['stt'].setText("STT is OFF")
+        self.info_labels['stt'].setText(text)
 
     # ====================================================================================
     def update_vlm_label(self, text, image, patrol_flag, usertracking_flag):
@@ -361,28 +347,33 @@ class DemoQtWidget(QWidget):
         else:
             self.info_labels['vlm_image'].setPixmap(self.placeholder_image)
             self.info_labels['vlm_text'].setText("VLM is OFF")
+        self.vlm_thread.client.warning_flag = False # reset warning flag after updating label
     
     # ====================================================================================
     def update_user_tracking_label(self, body_ids, image):
         if self.states['usertracking']:
 
             # what's modified: update body id, update combo
+            self.target_id_update_flag = False
             self.body_ids = [str(i) for i in body_ids]
+            self.body_ids = ["", "-1"] + self.body_ids
             self.combo.clear() 
             self.combo.addItems(self.body_ids)
             self.state_labels["track_id"].setText(f"track id: {self.target_id}")
+            self.target_id_update_flag = True
             
             # what's modified: warning flag on to send pre-defined flags
-            if self.vlm_thread is not None:
-                self.states["vlm"] = True
+            try:
                 self.vlm_thread.client.warning_flag = True
+            except:
+                print("warning flag not sent")
             # Update with image 
             scaled_pixmap_usertracking = zed_image_to_qpixmap(image)
             self.info_labels['usertracking'].setPixmap(scaled_pixmap_usertracking)
             # what's modified: resume flag no update
             # self.usertracking_thread.client.navigation_resume_flag = True 
         else:
-            self.body_ids = []
+            self.body_ids = ["-1"]
             self.info_labels['usertracking'].setPixmap(self.placeholder_image)
             self.usertracking_thread.client.navigation_resume_flag = False # stop navigation when usertracking is off
             if self.usertracking_thread.client.navigation_status == "Navigating":
