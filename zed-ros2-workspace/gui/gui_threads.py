@@ -100,10 +100,10 @@ class DemoQtWidget(QWidget):
             self.usertracking_thread = usertracking_thread
             self.usertracking_thread.signal.connect(self.update_user_tracking_label)
             self.usertracking_thread.start()
-        self.stts_thread = STTSThread()
-        self.stts_thread.stt_signal.connect(self.update_stt_label)
-        self.stts_thread.tts_signal.connect(self.update_tts_label)
-        self.stts_thread.start()
+        # self.stts_thread = STTSThread()
+        # self.stts_thread.stt_signal.connect(self.update_stt_label)
+        # self.stts_thread.tts_signal.connect(self.update_tts_label)
+        # self.stts_thread.start()
 
         
 

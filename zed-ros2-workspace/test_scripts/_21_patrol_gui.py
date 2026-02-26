@@ -10,7 +10,8 @@ from clients.zed_client import ZedClient
 from clients.stt_client import STTClient
 from clients.tts_client import TTSClient
 from clients.face_recognition_client import FaceRecognitionClient
-from clients.vlm_client import VLLMClient
+# from clients.vlm_client import VLLMClient
+from _20_vlm_gui import VLLMClient, VLLMThread
 from zed_wrapper.body_tracking_visualizer import visualize_bodies_2d
 from utils.pid import PIDControllerClass
 
@@ -29,11 +30,19 @@ from action_msgs.msg import GoalStatusArray
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
 
-WAYPOINTS = [((-2.88689, -1.29752, 0., 0., 0., -0.417859, 0.908512)), #(x,y,z,qx,qy,qz,qw)
-            ((1.56717, -6.46273, 0., 0., 0., -0.418961, 0.908004)),
-            ((3.58321, -8.42727, 0., 0., 0., -0.399719, 0.916638)),
-            # ((7.33938, -12.266, 0., 0., 0., -0.407712, 0.913111))
+# WAYPOINTS = [((-2.88689, -1.29752, 0., 0., 0., -0.417859, 0.908512)), #(x,y,z,qx,qy,qz,qw)
+#             ((1.56717, -6.46273, 0., 0., 0., -0.418961, 0.908004)),
+#             ((3.58321, -8.42727, 0., 0., 0., -0.399719, 0.916638)),
+#             # ((7.33938, -12.266, 0., 0., 0., -0.407712, 0.913111))
+# ]
+
+WAYPOINTS = [((0.694054, -8.85587, 0., 0., 0., -0.684484, 0.729028)), #(x,y,z,qx,qy,qz,qw)
+            ((-4.57819, -14.2423, 0., 0., 0., -0.711791, 0.702391)),
+            ((-5.20466, -22.4224, 0., 0., 0., -0.666923, 0.745127)),
+            ((3.49335, -35.6834, 0., 0., 0., -0.68235, 0.731026))
 ]
+
+
 
 class faceIdentificationWithNav(Node):
     def __init__(self, zed_client, tts_client, face_recognition_client, use_navigation= True, use_audio=True):
@@ -87,6 +96,7 @@ class faceIdentificationWithNav(Node):
         self.pub_pantilt_command = self.create_publisher(Float64MultiArray, 'pantilt_command', 10)
         self.subscription = self.create_subscription(GoalStatusArray,'/navigate_to_pose/_action/status',self.nav_status_callback, 1)
         self.timer = self.create_timer(0.02, self.timer_callback)
+        self.timer_flag = False
 
         # Init pan-tilt pose
         for _ in range(30):
@@ -143,12 +153,16 @@ class faceIdentificationWithNav(Node):
             elif self.navigation_status == "Cancelled" and not face_recognition_flag:
                 print("Face recognition ended, resuming navigation")
                 self.navigation_resume_flag = True
+                # time.sleep(0.5)
+                time.sleep(0.01)
                 return
-
         else: # nobody detected
             if self.navigation_status == "Cancelled":
                 self.navigation_resume_flag = True
+                # time.sleep(0.5)
+                time.sleep(0.01)
                 return
+
         # print("C")
         # Process each face in the threshold distance
         for body in bodies:
@@ -206,6 +220,7 @@ class faceIdentificationWithNav(Node):
                 _, bbox = self.crop_face(image, body)
                 if bbox is not None: # if face is in the image (not out of bounds)
                     self.overlay_face_bbox(self.image_display, bbox, body['id'], self.face_id_memory.get(body['id'], "Not recognized"))
+        self.timer_flag = True
         # print("D")
         # self.imshow(self.image_display)
         # print("E")
@@ -244,10 +259,7 @@ class faceIdentificationWithNav(Node):
         """
             Handle navigation goal
         """
-        if self.stop and self.navigation_status not in  ["Cancelled", "Goal Reached"]:
-            self.cancel_nav2_navigation()
-            self.navigation_resume_flag = True
-        elif self.navigation_status == "Goal Reached":
+        if self.navigation_status == "Goal Reached":
             if self.current_waypoint_index < len(self.waypoints) - 1:
                 print(f"Updating to waypoint {self.current_waypoint_index + 1}")
                 self.current_waypoint_index += 1 # update waypoint index
@@ -256,12 +268,33 @@ class faceIdentificationWithNav(Node):
                 print("Reached the last waypoint")
                 self.navigation_status = "End"
                 self.stop = True
+
         elif not self.stop and self.navigation_resume_flag:
             print(f"Resuming navigation to waypoint {self.current_waypoint_index}")
             self.navigation_resume_flag = False
             self.pantilt_command = [0.,-30.]
             self.publish_pantilt_command()
             self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
+        # # print("Handling navigation goal")
+        # # print("navigation status:", self.navigation_status)
+        # if self.stop and self.navigation_status not in  ["Cancelled", "Goal Reached"]:
+        #     self.cancel_nav2_navigation()
+        #     # self.navigation_resume_flag = True
+        # elif self.navigation_status == "Goal Reached":
+        #     if self.current_waypoint_index < len(self.waypoints) - 1:
+        #         print(f"Updating to waypoint {self.current_waypoint_index + 1}")
+        #         self.current_waypoint_index += 1 # update waypoint index
+        #         self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
+        #     else:
+        #         print("Reached the last waypoint")
+        #         self.navigation_status = "End"
+        #         self.stop = True
+        # elif not self.stop and self.navigation_resume_flag: # kisang, here
+        #     print(f"Resuming navigation to waypoint {self.current_waypoint_index}")
+        #     self.navigation_resume_flag = False
+        #     self.pantilt_command = [0.,-30.]
+        #     self.publish_pantilt_command()
+        #     self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
 
     def cancel_nav2_navigation(self):
         """
@@ -500,12 +533,16 @@ class PatrolThread(QThread):
         self.client = patrol_client
 
     def run(self):
+        cnt = 0
         while True:
             # spin ros2 node
             rclpy.spin_once(self.client)
-            print("ros2 node spinning!")
-            print("navigation status: ", self.client.navigation_status)
-            self.signal.emit(self.client.image_display) # image
+            # print("ros2 node spinning!")
+            # print("navigation status: ", self.client.navigation_status, "waypoint idx: ", self.client.current_waypoint_index/len(WAYPOINTS))
+            if self.client.timer_flag == True:
+                cnt += 1
+                if cnt > 15:
+                    self.signal.emit(self.client.image_display) # image
 
 
 def main():
@@ -519,11 +556,19 @@ def main():
         zed_client,
         tts_client,
         face_recognition_client,
-        use_navigation= False,
+        use_navigation= True,
         use_audio=True
         )
     patrol_thread = PatrolThread(patrol_client)
+    # vllm_client = VLLMClient(
+    #     api_url = "http://localhost:8000",
+    #     stt_client = stt_client,
+    #     tts_client = tts_client,
+    #     zed_client = zed_client
+    # )
+    # vlm_thread = VLLMThread(vllm_client)
     qt_widget = DemoQtWidget(
+        # vlm_thread=vlm_thread,
         vlm_thread=None,
         patrol_thread=patrol_thread,
         usertracking_thread=None
