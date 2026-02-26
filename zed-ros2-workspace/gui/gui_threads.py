@@ -5,7 +5,8 @@ import numpy as np
 import time
 
 # use pyqt5!!
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
+# What's modified: Qcombo added
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox, QComboBox
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QPixmap, QFont
 
@@ -108,6 +109,9 @@ class DemoQtWidget(QWidget):
         # self.stts_thread.tts_signal.connect(self.update_tts_label)
         # self.stts_thread.start()
 
+        # what's modified: body ids initialize 
+        self.body_ids = []
+
         # set fonts 
         self.set_fonts(hangul_label_names=['stt', 'tts', 'vlm_text'])
         # vlm control flag 
@@ -196,6 +200,9 @@ class DemoQtWidget(QWidget):
         # label
         vlm_query_state_label = QLabel("Send VLM Query", self)
         self.state_labels['vlm_query'] = vlm_query_state_label
+        # what's modified: word wrap & width fixing
+        self.state_labels['vlm_query'].setWordWrap(True)
+        self.state_labels['vlm_query'].setFixedWidth(200)
         part_layout.addWidget(vlm_query_state_label)
         image_button_layout.addLayout(part_layout)
 
@@ -214,13 +221,19 @@ class DemoQtWidget(QWidget):
         info_label = QLabel(f"Server communication not initialized", self)
         info_label.setPixmap(self.placeholder_image)
         self.info_labels['usertracking'] = info_label
-        # track id button 
-        track_id_button = QPushButton("Update Tracking ID", self)
-        track_id_button.clicked.connect(self.update_tracking_id_callback)
+        # what's modified: combo scroll added
+        # track id set with combo
+        self.combo = QComboBox()
+        self.combo.addItems(self.body_ids)
+        self.combo.currentIndexChanged.connect(self.update_tracking_id_callback)
+        # label
+        track_id_label = QLabel("Tracking: 0", self)
+        self.state_labels["track_id"] = track_id_label
+        part_layout.addWidget(self.combo)
         part_layout.addWidget(info_label)
-        part_layout.addWidget(track_id_button)
         image_button_layout.addLayout(part_layout)
-        # patrol
+
+        # 5. User Tracking & Patrol label - buttons & image
         part_layout = QVBoxLayout()
         btn = QPushButton(f"patrol ON/OFF", self)
         btn.clicked.connect(lambda checked, name='patrol': self.state_callback(name))
@@ -292,13 +305,11 @@ class DemoQtWidget(QWidget):
             self.state_labels['vlm_control_and_kill'].setText("GUI is controlling the robot")
 
     """ UPDATE TRACKING ID CALLBACK """
+    # what's modified: update with combo
     def update_tracking_id_callback(self):
-        if len(self.body_ids) == 0:
-            # no body id, stop
-            pass 
-        else: # if bodies
-            # target setting
-            pass
+        selected_idx = self.combo.currentText()
+        selected_idx = int(selected_idx)
+        self.usertracking_thread.client.target_id = selected_idx
 
 
     # ====================================================================================
