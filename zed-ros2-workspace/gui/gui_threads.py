@@ -85,6 +85,8 @@ class DemoQtWidget(QWidget):
                 Qt.TransformationMode.SmoothTransformation
             )
 
+        # what's modified: body ids initialize 
+        self.body_ids = []
         # UI initialization
         self.initUI()
 
@@ -109,8 +111,7 @@ class DemoQtWidget(QWidget):
         # self.stts_thread.tts_signal.connect(self.update_tts_label)
         # self.stts_thread.start()
 
-        # what's modified: body ids initialize 
-        self.body_ids = []
+        
 
         # set fonts 
         self.set_fonts(hangul_label_names=['stt', 'tts', 'vlm_text'])
@@ -394,7 +395,7 @@ class DemoQtWidget(QWidget):
 
     def update_patrol_label(self, image):
         if self.states['patrol']:
-            self.patrol_thread.node.stop = False
+            self.patrol_thread.client.stop = False
             pixmap = QPixmap()
             pixmap.loadFromData(image)
             scaled_pixmap = pixmap.scaled(
@@ -404,7 +405,7 @@ class DemoQtWidget(QWidget):
             )
             self.info_labels['patrol'].setPixmap(scaled_pixmap)
         else:
-            self.patrol_thread.node.stop = True # patrol node stop flag true 
+            self.patrol_thread.client.stop = True # patrol node stop flag true 
             self.info_labels['patrol'].setPixmap(self.placeholder_image) # show placeholder when patrol is off
             # or, place holder
     

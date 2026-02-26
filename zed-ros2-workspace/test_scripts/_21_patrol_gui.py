@@ -78,8 +78,8 @@ class faceIdentificationWithNav(Node):
             return
         self.image_width = self.zed_client.image_shape[1]
         self.image_height = self.zed_client.image_shape[0]
-        cv2.namedWindow("ZED Client - Body Tracking", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("ZED Client - Body Tracking", self.image_width, self.image_height)
+        # cv2.namedWindow("ZED Client - Body Tracking", cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow("ZED Client - Body Tracking", self.image_width, self.image_height)
 
         # Init ROS2 Components
         self.pub_face_pose = self.create_publisher(PoseStamped, 'face_pose', 10)
@@ -96,7 +96,7 @@ class faceIdentificationWithNav(Node):
 
     """___MAIN LOOP___"""
     def timer_callback(self):
-        print("A")
+        # print("A")
         # Update Navigation Status
         if self.use_navigation:
             self.handle_nav_goal()
@@ -108,7 +108,7 @@ class faceIdentificationWithNav(Node):
         image = self.zed_client.grab_image()
         self.image_display = image.copy()
         bodies = self.zed_client.grab_bodies()
-        print("B")
+        # print("B")
         # Check if person detected
         if bodies is not None and len(bodies) > 0: # at least one person detected
             self.image_display = self.overlay_bodies_on_image(self.image_display, bodies)
@@ -149,7 +149,7 @@ class faceIdentificationWithNav(Node):
             if self.navigation_status == "Cancelled":
                 self.navigation_resume_flag = True
                 return
-        print("C")
+        # print("C")
         # Process each face in the threshold distance
         for body in bodies:
             if body['id'] == self.target_id:
@@ -206,9 +206,9 @@ class faceIdentificationWithNav(Node):
                 _, bbox = self.crop_face(image, body)
                 if bbox is not None: # if face is in the image (not out of bounds)
                     self.overlay_face_bbox(self.image_display, bbox, body['id'], self.face_id_memory.get(body['id'], "Not recognized"))
-        print("D")
+        # print("D")
         # self.imshow(self.image_display)
-        print("E")
+        # print("E")
 
     """___NAVIGATION FUNCTIONS___"""
     def send_navigation_goal(self, goal, frame_id='map'):
@@ -519,7 +519,7 @@ def main():
         zed_client,
         tts_client,
         face_recognition_client,
-        use_navigation= True,
+        use_navigation= False,
         use_audio=True
         )
     patrol_thread = PatrolThread(patrol_client)

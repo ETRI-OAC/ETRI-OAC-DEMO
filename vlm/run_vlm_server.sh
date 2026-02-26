@@ -25,6 +25,5 @@ else
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   "$IMAGE" $VLLM_CMD
 fi
-
-    # -e HF_HUB_OFFLINE=1 \
-    # -e TRANSFORMERS_OFFLINE=1 \
+  # -e HF_HUB_OFFLINE=1 \
+  # -e TRANSFORMERS_OFFLINE=1 \
