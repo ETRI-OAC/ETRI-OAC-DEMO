@@ -15,9 +15,10 @@ from zed_wrapper.body_tracking_visualizer import visualize_bodies_2d
 from utils.pid import PIDControllerClass
 
 # GUI
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QThread
-from gui.gui import DemoQtWidget
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
+from PyQt5.QtCore import QThread, pyqtSignal, Qt
+from PyQt5.QtGui import QPixmap
+from gui.gui_threads import DemoQtWidget
 
 import rclpy
 from rclpy.node import Node
@@ -492,57 +493,44 @@ class faceIdentificationWithNav(Node):
     def get_body_ids(self, bodies):
         return [body['id'] for body in bodies]
 
-class nodeThread(QThread):
-    def __init__(self, node):
+class PatrolThread(QThread):
+    signal = pyqtSignal(object) # body_ids, image
+    def __init__(self, patrol_client):
         super().__init__()
-        self.node = node
+        self.client = patrol_client
 
     def run(self):
-        rclpy.spin(self.node)
+        while True:
+            # spin ros2 node
+            rclpy.spin_once(self.client)
+            print("ros2 node spinning!")
+            print("navigation status: ", self.client.navigation_status)
+            self.signal.emit(self.client.image_display) # image
 
-    # def run(self):
-    #     while True:
-    #         if gui_flag:
-    #             rclpy.spin_once(self.node)
 
 def main():
-    zed_client = ZedClient()
+    app = QApplication(sys.argv)
+    rclpy.init()
     stt_client = STTClient()
     tts_client = TTSClient()
+    zed_client = ZedClient()
     face_recognition_client = FaceRecognitionClient()
-    vlm_client = VLLMClient(stt_client=stt_client, tts_client=tts_client)
-    use_navigation = True
-    use_audio = True
-
-    rclpy.init()
-    node = faceIdentificationWithNav(zed_client, tts_client, face_recognition_client, use_navigation, use_audio)
-    node_thread = nodeThread(node)
-
-    app = QApplication(sys.argv)
-    ex = DemoQtWidget(stt_client, tts_client, vlm_client, node_thread)
-    ex.show()
-    sys.exit(app.exec_())
-
-# def main():
-#     rclpy.init()
-#     face_id_demo = faceIdentificationWithNav(use_navigation=False, use_audio=False)
-#     try:
-#         rclpy.spin(face_id_demo)
-#     except KeyboardInterrupt:
-#         print("Keyboard interrupt")
-#         face_id_demo.cancel_nav2_navigation()
-#     finally:
-#         face_id_demo.cancel_nav2_navigation()
-#         face_id_demo.close()
-#         rclpy.shutdown()
-#         print("Face tracking closed")
-
-# def main():
-#     app = QApplication(sys.argv)
-#     ex = DemoQtWidget()
-#     ex.show()
-#     # Change 2: Use exec_() for PyQt5
-#     sys.exit(app.exec_())
+    patrol_client = faceIdentificationWithNav(
+        zed_client,
+        tts_client,
+        face_recognition_client,
+        use_navigation= True,
+        use_audio=True
+        )
+    patrol_thread = PatrolThread(patrol_client)
+    qt_widget = DemoQtWidget(
+        vlm_thread=None,
+        patrol_thread=patrol_thread,
+        usertracking_thread=None
+    )
+    qt_widget.show()
+    app.exec_()
+    rclpy.shutdown()
 
 if __name__ == "__main__":
     main()

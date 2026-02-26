@@ -39,6 +39,9 @@ instruc["instruction_patrol"] = "앞으로 '순찰 시작'이라는 명령이 �
 instruc["initialize_patrol"] = "순찰 시작"
 instruc["terminate_patrol"] = "순찰 종료"
 
+# what's modified: warning instruction 
+instruc["user_track_warning"] = "지금 보고 있는 이미지에 차량이나 자전거가 있다면, '위험, 전방에 차량이 있습니다.' 혹은 '위험, 전방에 자전거가 있습니다.' 라고 답해줘. 만약 없을 경우에는, 아무 대답도 하지 마."
+
 
 """ UTILS """
 # 1. encode image
@@ -168,6 +171,8 @@ class VLLMThread(QThread):
         self.client.warmup(prompt=instruc["default"], count=1)
         self.client.get_vlm_response(prompt=instruc["default"])
         self.send_flag = False
+        # what's modified: warning flag
+        self.warning_flag = False
 
         self.patrol_flag = False 
         self.usertracking_flag = False
