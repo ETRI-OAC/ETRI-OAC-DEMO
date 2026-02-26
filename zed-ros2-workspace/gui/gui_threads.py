@@ -364,6 +364,16 @@ class DemoQtWidget(QWidget):
     # ====================================================================================
     def update_user_tracking_label(self, body_ids, image):
         if self.states['usertracking']:
+
+            # what's modified: update body id, update combo
+            self.body_ids = [str(i) for i in body_ids]
+            self.combo.clear() 
+            self.combo.addItems(self.body_ids)
+            self.state_labels["track_id"].setText(f"track id: {self.target_id}")
+            
+            # what's modified: warning flag on to send pre-defined flags
+            self.states["vlm"] = True
+            self.vlm_thread.client.warning_flag = True
             # Update with image 
             pixmap = QPixmap()
             pixmap.loadFromData(image)
@@ -373,9 +383,8 @@ class DemoQtWidget(QWidget):
                 Qt.TransformationMode.SmoothTransformation
             )
             self.info_labels['usertracking'].setPixmap(scaled_pixmap)
-            # update body ids , start user tracking
-            self.body_ids = body_ids
-            self.usertracking_thread.client.navigation_resume_flag = True 
+            # what's modified: resume flag no update
+            # self.usertracking_thread.client.navigation_resume_flag = True 
         else:
             self.body_ids = []
             self.info_labels['usertracking'].setPixmap(self.placeholder_image)
@@ -384,12 +393,8 @@ class DemoQtWidget(QWidget):
                 self.usertracking_thread.client.cancel_nav2_navigation()
 
     def update_patrol_label(self, image):
-        # TODO: send signal from thread: body_ids, image
-        # TODO: 
         if self.states['patrol']:
             self.patrol_thread.node.stop = False
-            # image = self.patrol_thread.node.image_display # already emitted by signal
-            # Update with image 
             pixmap = QPixmap()
             pixmap.loadFromData(image)
             scaled_pixmap = pixmap.scaled(
