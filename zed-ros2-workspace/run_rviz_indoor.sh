@@ -39,5 +39,5 @@ else
 fi
 
 # Run the server inside the container (foreground; Ctrl+C stops the server)
-echo "[*] Running Nav2 Indoor in container..."
+echo "[*] Running rviz Indoor in container..."
 docker exec -it $CONTAINER_NAME bash -c "$COMMAND"

@@ -10,9 +10,11 @@ from clients.zed_client import ZedClient
 from clients.stt_client import STTClient
 from clients.tts_client import TTSClient
 from clients.face_recognition_client import FaceRecognitionClient
-from clients.vlm_client import VLLMClient
+# from clients.vlm_client import VLLMClient
 from zed_wrapper.body_tracking_visualizer import visualize_bodies_2d
 from utils.pid import PIDControllerClass
+
+from _20_vlm_gui import VLLMThread, VLLMClient
 
 import rclpy
 from rclpy.node import Node
@@ -452,14 +454,17 @@ class UsertrackingThread(QThread):
         self.client = usertracking_client
 
     def run(self):
+        iter = 0
         while True:
+            iter += 1
             # spin ros2 node
             rclpy.spin_once(self.client)
             print("navigation status: ", self.client.navigation_status)
             print("resume flag: ", self.client.navigation_resume_flag)
-            self.signal.emit(self.client.body_ids ,self.client.image_display) # image
-
-
+            if iter > 20:
+                self.signal.emit(self.client.body_ids ,self.client.image_display) # image
+                iter = 0
+            
 def main():
     app = QApplication(sys.argv)
     # what's modified: all clients declared outside thread
@@ -474,7 +479,7 @@ def main():
         api_url = "http://localhost:8000",
         stt_client = stt_client,
         tts_client = tts_client,
-        zed_client=zed_client
+        zed_client = zed_client
     )
     vlm_thread = VLLMThread(vllm_client)
     # what's modified: vllm thread works!

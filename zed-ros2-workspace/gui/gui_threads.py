@@ -3,12 +3,13 @@ import sys
 import requests
 import numpy as np
 import time
+import cv2
 
 # use pyqt5!!
 # What's modified: Qcombo added
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox, QComboBox
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
-from PyQt5.QtGui import QPixmap, QFont
+from PyQt5.QtGui import QPixmap, QFont, QImage
 
 class STTSThread(QThread):
     # total 5 signals for 5 buttons
@@ -87,6 +88,7 @@ class DemoQtWidget(QWidget):
 
         # what's modified: body ids initialize 
         self.body_ids = []
+        self.target_id = -1
         # UI initialization
         self.initUI()
 
@@ -309,8 +311,12 @@ class DemoQtWidget(QWidget):
     # what's modified: update with combo
     def update_tracking_id_callback(self):
         selected_idx = self.combo.currentText()
-        selected_idx = int(selected_idx)
+        if selected_idx == "":
+            selected_idx = -1
+        else:
+            selected_idx = int(selected_idx)
         self.usertracking_thread.client.target_id = selected_idx
+        self.target_id = selected_idx
 
 
     # ====================================================================================
@@ -367,11 +373,12 @@ class DemoQtWidget(QWidget):
             self.state_labels["track_id"].setText(f"track id: {self.target_id}")
             
             # what's modified: warning flag on to send pre-defined flags
-            self.states["vlm"] = True
-            self.vlm_thread.client.warning_flag = True
+            if self.vlm_thread is not None:
+                self.states["vlm"] = True
+                self.vlm_thread.client.warning_flag = True
             # Update with image 
-            scaled_pixmap = zed_image_to_qpixmap(image)
-            self.info_labels['usertracking'].setPixmap(scaled_pixmap)
+            scaled_pixmap_usertracking = zed_image_to_qpixmap(image)
+            self.info_labels['usertracking'].setPixmap(scaled_pixmap_usertracking)
             # what's modified: resume flag no update
             # self.usertracking_thread.client.navigation_resume_flag = True 
         else:
@@ -404,6 +411,7 @@ class DemoQtWidget(QWidget):
 def zed_image_to_qpixmap(zed_image):
     height, width, channel = zed_image.shape
     bytes_per_line = channel * width
+    zed_image = cv2.cvtColor(zed_image, cv2.COLOR_BGR2RGB) # Convert BGR to RGB
     qimg = QImage(zed_image.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
     qpixmap = QPixmap.fromImage(qimg)
     qpixmap_scaled = qpixmap.scaled(300, 250)
