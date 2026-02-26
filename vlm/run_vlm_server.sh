@@ -15,6 +15,11 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
 else
   # First run – create named container (model will be downloaded; container is kept after exit)
   echo "First run: creating container and downloading model..."
-  docker run -it --name "$CONTAINER_NAME" --pull always --runtime=nvidia --network host \
+  # docker run -it --name "$CONTAINER_NAME" --pull always --runtime=nvidia --network host \
+  #   "$IMAGE" $VLLM_CMD
+  docker run -it --name "$CONTAINER_NAME" --runtime=nvidia --network host \
+    --pull never \
+    -e HF_HUB_OFFLINE=1 \
+    -e TRANSFORMERS_OFFLINE=1 \
     "$IMAGE" $VLLM_CMD
 fi
