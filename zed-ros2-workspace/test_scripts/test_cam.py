@@ -29,6 +29,8 @@ class humanTracking(Node):
     def __init__(self):
         super().__init__('human_tracking')
         self.zed_client = ZedClient()
+        self.stop = False
+        self.target_id = -1
 
         # Init cv2 window
         if self.zed_client.shm_image_block is None:
@@ -73,7 +75,7 @@ class humanTracking(Node):
                     image_display = self.overlay_face_bbox(image_display, bbox, body_id, name="unknown")
                 
         self.imshow(image_display)
-        print(image_display.shape)
+        print(type(image_display))
     
     def reset_nav_timer_callback(self):
         """
