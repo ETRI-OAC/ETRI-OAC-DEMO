@@ -111,7 +111,8 @@ class faceIdentificationWithNav(Node):
         if self.use_navigation:
             self.handle_nav_goal()
         if self.stop:
-            print("[NAV2] Stop Flag On")
+            # print("[NAV2] Stop Flag On")
+            time.sleep(0.1)
             return
 
         # Update Image and Bodies from ZED
@@ -154,13 +155,13 @@ class faceIdentificationWithNav(Node):
                 print("Face recognition ended, resuming navigation")
                 self.navigation_resume_flag = True
                 # time.sleep(0.5)
-                time.sleep(0.01)
+                time.sleep(0.1)
                 return
         else: # nobody detected
             if self.navigation_status == "Cancelled":
                 self.navigation_resume_flag = True
                 # time.sleep(0.5)
-                time.sleep(0.01)
+                time.sleep(0.1)
                 return
 
         # print("C")
@@ -234,6 +235,7 @@ class faceIdentificationWithNav(Node):
             Returns:
                 None
         """
+        # 1. heavy
         client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         self.get_logger().info('Waiting for Nav2 action server...')
         if not client.wait_for_server(timeout_sec=10.0):

@@ -109,8 +109,6 @@ class DemoQtWidget(QWidget):
 
         # set fonts 
         self.set_fonts(hangul_label_names=['stt', 'tts', 'vlm_text'])
-        # vlm control flag 
-        self.allow_vlm_ctrl = False
         print("GUI initialized")
 
     def initUI(self):
@@ -147,8 +145,8 @@ class DemoQtWidget(QWidget):
         # 2. vlm control & kill button
         vlm_cmd_and_kill_layout = QVBoxLayout()
         button_layout = QHBoxLayout()
-        # vlm control button
-        vlm_ctrl_btn = QPushButton('Allow VLM Control', self)
+        # vlm command button
+        vlm_ctrl_btn = QPushButton('Send VLM Command', self)
         vlm_ctrl_btn.setFixedSize(150, 100) 
         vlm_ctrl_btn.clicked.connect(lambda checked, name='vlm_control': self.vlm_control_callback())
         button_layout.addWidget(vlm_ctrl_btn)
@@ -278,24 +276,25 @@ class DemoQtWidget(QWidget):
 
     """ VLM CONTROL CALLBACK: ALLOW VLM TO CONTROL """
     def vlm_control_callback(self): 
-        self.allow_vlm_ctrl = not self.allow_vlm_ctrl
-        if self.allow_vlm_ctrl:
-            # set patrol and usertracking state false
-            self.states['patrol'] = False
-            self.states['usertracking'] = False
-            self.states['vlm'] = True
-            self.state_labels['patrol'].setText("patrol: OFF")
-            self.state_labels['usertracking'].setText("usertracking: OFF")
-            self.state_labels['vlm'].setText("vlm: ON")
-            self.state_labels['vlm_control_and_kill'].setText("VLM is controlling the robot")
-        else:
-            self.states['patrol'] = False
-            self.states['usertracking'] = False
-            self.states['vlm'] = False
-            self.state_labels['patrol'].setText("patrol: OFF")
-            self.state_labels['usertracking'].setText("usertracking: OFF")
-            self.state_labels['vlm'].setText("vlm: OFF")
-            self.state_labels['vlm_control_and_kill'].setText("GUI is controlling the robot")
+        self.vlm_thread.client.command_flag = True
+        # self.allow_vlm_ctrl = not self.allow_vlm_ctrl
+        # if self.allow_vlm_ctrl:
+        #     # set patrol and usertracking state false
+        #     self.states['patrol'] = False
+        #     self.states['usertracking'] = False
+        #     self.states['vlm'] = True
+        #     self.state_labels['patrol'].setText("patrol: OFF")
+        #     self.state_labels['usertracking'].setText("usertracking: OFF")
+        #     self.state_labels['vlm'].setText("vlm: ON")
+        #     self.state_labels['vlm_control_and_kill'].setText("VLM is controlling the robot")
+        # else:
+        #     self.states['patrol'] = False
+        #     self.states['usertracking'] = False
+        #     self.states['vlm'] = False
+        #     self.state_labels['patrol'].setText("patrol: OFF")
+        #     self.state_labels['usertracking'].setText("usertracking: OFF")
+        #     self.state_labels['vlm'].setText("vlm: OFF")
+        #     self.state_labels['vlm_control_and_kill'].setText("GUI is controlling the robot")
 
     """ UPDATE TRACKING ID CALLBACK """
     # what's modified: update with combo

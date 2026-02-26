@@ -30,7 +30,8 @@ from nav2_msgs.action import NavigateToPose
 WAYPOINTS = [((0.694054, -8.85587, 0., 0., 0., -0.684484, 0.729028)), #(x,y,z,qx,qy,qz,qw)
             ((-4.57819, -14.2423, 0., 0., 0., -0.711791, 0.702391)),
             ((-5.20466, -22.4224, 0., 0., 0., -0.666923, 0.745127)),
-            ((3.49335, -35.6834, 0., 0., 0., -0.68235, 0.731026))
+            ((3.49335, -35.6834, 0., 0., 0., -0.68235, 0.731026)),
+            ((0.694054, -8.85587, 0., 0., 0., -0.684484, 0.729028))
 ]
 
 
@@ -98,9 +99,9 @@ class faceIdentificationWithNav(Node):
         # Update Navigation Status
         if self.use_navigation:
             self.handle_nav_goal()
-        if self.stop:
-            print("Scenario Ended")
-            return
+        # if self.stop:
+        #     print("Scenario Ended")
+        #     return
 
         # Update Image and Bodies from ZED
         image = self.zed_client.grab_image()
@@ -247,10 +248,11 @@ class faceIdentificationWithNav(Node):
                 print(f"Updating to waypoint {self.current_waypoint_index + 1}")
                 self.current_waypoint_index += 1 # update waypoint index
                 self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
-            else:
-                print("Reached the last waypoint")
-                self.navigation_status = "End"
-                self.stop = True
+            # else:
+            #     print("Reached the last waypoint")
+            #     self.navigation_status = "End"
+            #     self.stop = True
+            time.sleep(1.0)
 
         elif not self.stop and self.navigation_resume_flag:
             print(f"Resuming navigation to waypoint {self.current_waypoint_index}")
@@ -258,6 +260,7 @@ class faceIdentificationWithNav(Node):
             self.pantilt_command = [0.,-30.]
             self.publish_pantilt_command()
             self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
+            time.sleep(1.0)
 
     def cancel_nav2_navigation(self):
         """

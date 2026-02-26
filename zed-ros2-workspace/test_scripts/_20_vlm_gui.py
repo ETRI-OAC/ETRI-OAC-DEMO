@@ -61,7 +61,7 @@ class VLLMClient():
             api_url: str = "http://localhost:8000",
             model: str = "cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit",
             max_tokens: int = 512,
-            temperature: float = 0.7,
+            temperature: float = 0.0,
             stt_client = None,
             tts_client = None,
             zed_client = None
@@ -79,6 +79,7 @@ class VLLMClient():
         self.zed_client = zed_client
         self.image = self.zed_client.grab_image()
         self.warning_flag = False
+        self.command_flag = False
 
     def query(self, prompt: str, measure_time: bool = False) -> Tuple[Dict[str, Any], Optional[float]]:
         base64_image = encode_image(self.image)
@@ -190,6 +191,22 @@ class VLLMClient():
         else:
             print("Unexpected response format.")
             return None, None
+    
+    def get_vlm_response_command(self, use_audio = False):
+        prompt = instruc["default"]
+        self.image = self.zed_client.grab_image()
+        # vlm query 
+        response, elapsed_time = self.query(prompt, measure_time=True)
+
+        if "choices" in response and len(response["choices"]) > 0:
+            answer = response["choices"][0]["message"]["content"]
+            print("-" * 60)
+            print(f"Response received, answer: {answer}")
+            print("-" * 60)
+            return answer, self.image
+        else:
+            print("Unexpected response format.")
+            return None, None
 
 
 
@@ -248,6 +265,19 @@ class VLLMThread(QThread):
                 answer, image = self.client.get_vlm_response_safety(prompt = instruc["user_track_warning"],use_audio=self.use_audio)
                 # downsample image 
                 image = cv2.resize(image, (300, 250))
+
+                end_word = ["종료", "완료", "도착", "멈추", "멈춰", "멈추겠습니다"]
+                if any(word in answer for word in end_word):
+                    self.patrol_flag = False 
+                    self.usertracking_flag = False
+
+                self.signal.emit(answer, image, self.patrol_flag, self.usertracking_flag)
+                time.sleep(0.1)
+            elif self.client.command_flag:
+                answer, image = self.client.get_vlm_response_command()
+                # downsample image 
+                image = cv2.resize(image, (300, 250))
+                self.client.command_flag = False
 
                 end_word = ["종료", "완료", "도착", "멈추", "멈춰", "멈추겠습니다"]
                 if any(word in answer for word in end_word):
