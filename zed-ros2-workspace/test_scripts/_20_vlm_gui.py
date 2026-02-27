@@ -24,8 +24,8 @@ from gui.gui_threads import DemoQtWidget
 
 
 instruction_two_sentence = "지금부터 모든 응답은 두 문장 이내로 해줘."
-patrol_instruction = "앞으로 '순찰을 시작해줘'이라는 명령이 들어오면, '순찰을 시작하겠습니다'라고 한문장으로 대답해줘. 그리고 '순찰 종료'라는 명령이 들어오면, '순찰을 종료하겠습니다'라고 한문장으로 대답해줘."
-instruction_usertracking = "앞으로 '나를 따라와'이라는 명령이 들어오면, '네, 따라가겠습니다'라고 한문장으로 대답해줘. 그리고 '그만 따라와'라는 명령이 들어오면, '네, 멈추겠습니다'라고 한문장으로 대답해줘."
+patrol_instruction = "'순찰을 시작해줘'이라는 명령이 들어오면, '순찰을 시작하겠습니다'라고 한문장으로 대답해줘. 그리고 '순찰 종료'라는 명령이 들어오면, '순찰을 종료하겠습니다'라고 한문장으로 대답해줘."
+instruction_usertracking = "'사용자 추종을 시작해줘'이라는 명령이 들어오면, '네, 따라가겠습니다'라고만 대답해. 그 외에는 '원하시는 동작을 선택해주세요' 라고만 대답해."
 instruction_require_answer = "이제 질문에 대답해줘."
 
 instruc = {}
@@ -242,7 +242,7 @@ class VLLMThread(QThread):
                 # user tracking & patrol check
                 # VLM to Action mapping words!!!! <<<--- <<<--- <<<--- <<<---<<<---
                 patrol_words = ["순찰", "시작"]
-                usertracking_word = "따라"
+                usertracking_word = "추종"
                 end_word = ["종료", "완료", "도착", "멈추", "멈춰", "멈추겠습니다"]
 
                 if patrol_words[0] in answer and self.usertracking_flag == False:

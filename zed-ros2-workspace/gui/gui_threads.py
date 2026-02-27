@@ -253,10 +253,10 @@ class DemoQtWidget(QWidget):
     """ STATE CALLBACK """
     def state_callback(self, client_name):
         # update state
-        if not self.allow_vlm_ctrl:
-            self.states[client_name] = not self.states[client_name] # toggle state
-            state_text = f"{client_name}: ON" if self.states[client_name] else f"{client_name}: OFF"
-            self.state_labels[client_name].setText(state_text)
+        # if not self.allow_vlm_ctrl:
+        self.states[client_name] = not self.states[client_name] # toggle state
+        state_text = f"{client_name}: ON" if self.states[client_name] else f"{client_name}: OFF"
+        self.state_labels[client_name].setText(state_text)
 
     """ KILL CALLBACK """
     def kill_callback(self):
@@ -330,19 +330,20 @@ class DemoQtWidget(QWidget):
             self.info_labels['vlm_text'].setText(text)
 
             # patrol - usertracking turn on/off
-            if self.allow_vlm_ctrl == True:
-                if patrol_flag == True:
-                    self.states['patrol'] = True
-                    self.state_labels['patrol'].setText("patrol: ON")
-                else:
-                    self.states['patrol'] = False
-                    self.state_labels['patrol'].setText("patrol: OFF")
-                if usertracking_flag == True:
-                    self.states['usertracking'] = True
-                    self.state_labels['usertracking'].setText("usertracking: ON")
-                else:
-                    self.states['usertracking'] = False
-                    self.state_labels['usertracking'].setText("usertracking: OFF")
+            # if self.allow_vlm_ctrl == True:
+            # if patrol_flag == True:
+            #     self.states['patrol'] = True
+            #     self.state_labels['patrol'].setText("patrol: ON")
+            # else:
+            #     self.states['patrol'] = False
+            #     self.state_labels['patrol'].setText("patrol: OFF")
+            if usertracking_flag == True:
+                self.states['usertracking'] = True
+                self.state_labels['usertracking'].setText("usertracking: ON")
+            else:
+                # self.states['usertracking'] = False
+                # self.state_labels['usertracking'].setText("usertracking: OFF")
+                pass
         else:
             self.info_labels['vlm_image'].setPixmap(self.placeholder_image)
             self.info_labels['vlm_text'].setText("VLM is OFF")

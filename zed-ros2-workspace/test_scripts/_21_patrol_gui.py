@@ -110,10 +110,10 @@ class faceIdentificationWithNav(Node):
         # Update Navigation Status
         if self.use_navigation:
             self.handle_nav_goal()
-        if self.stop:
-            # print("[NAV2] Stop Flag On")
-            time.sleep(0.1)
-            return
+        # if self.stop:
+        #     # print("[NAV2] Stop Flag On")
+        #     time.sleep(0.01)
+        #     return
 
         # Update Image and Bodies from ZED
         image = self.zed_client.grab_image()
@@ -149,19 +149,20 @@ class faceIdentificationWithNav(Node):
             if self.navigation_status == "Navigating" and face_recognition_flag:
                 print("Face recognition started, canceling navigation")
                 self.cancel_nav2_navigation()
+                # time.sleep(0.1)
                 return
             # Resume Navigation if there is no person who is not treated before
             elif self.navigation_status == "Cancelled" and not face_recognition_flag:
                 print("Face recognition ended, resuming navigation")
                 self.navigation_resume_flag = True
                 # time.sleep(0.5)
-                time.sleep(0.1)
+                time.sleep(0.01)
                 return
         else: # nobody detected
             if self.navigation_status == "Cancelled":
                 self.navigation_resume_flag = True
                 # time.sleep(0.5)
-                time.sleep(0.1)
+                time.sleep(0.01)
                 return
 
         # print("C")
@@ -538,7 +539,7 @@ class PatrolThread(QThread):
         cnt = 0
         while True:
             # spin ros2 node
-            rclpy.spin_once(self.client)
+            rclpy.spin_once(self.client, timeout_sec = 0.02)
             # print("ros2 node spinning!")
             # print("navigation status: ", self.client.navigation_status, "waypoint idx: ", self.client.current_waypoint_index/len(WAYPOINTS))
             if self.client.timer_flag == True:
