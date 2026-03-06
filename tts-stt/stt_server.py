@@ -26,7 +26,7 @@ def send_text():
         })
 """ GUI FUNCTIONS END """
 
-def load_whisper_model(model_name: str = "tiny"):
+def load_whisper_model(model_name: str = "small"):
     """Load Whisper model."""
     return whisper.load_model(model_name)
 
