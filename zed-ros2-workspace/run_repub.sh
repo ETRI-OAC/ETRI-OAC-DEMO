@@ -41,6 +41,3 @@ fi
 # Run the server inside the container (foreground; Ctrl+C stops the server)
 echo "[*] Running zed_server.py in container..."
 docker exec -it $CONTAINER_NAME bash -c "$COMMAND"
-
-# Optional: revoke xhost when script exits
-xhost -si:localuser:root 2>/dev/null || true

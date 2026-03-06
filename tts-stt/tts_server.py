@@ -32,6 +32,18 @@ MODEL_DIR = SCRIPT_DIR / "tts_model" / "sherpa-onnx-korean-tts" / "vits-mimic3-k
 DATA_DIR = MODEL_DIR / "espeak-ng-data"
 
 
+
+""" GUI FUNCTIONS """
+global text
+text = "" 
+@app.route("/gui", methods=["GET"])
+def send_text():
+    """Send transcribed text to GUI client."""
+    return jsonify({
+        "output": text,
+        })
+""" GUI FUNCTIONS END """
+
 def _detect_playback_sample_rate() -> int:
     """Use default output device's preferred rate; fallback to 48000 then 44100."""
     try:

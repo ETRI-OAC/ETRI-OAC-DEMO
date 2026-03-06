@@ -42,6 +42,9 @@ RUN pip install flask --index-url https://pypi.org/simple --ignore-installed
 # Install Whisper
 RUN pip install --index-url https://pypi.org/simple -U openai-whisper
 
+# Sounddevice
+RUN add-apt-repository universe && apt update && apt install libportaudio2 libasound2-dev -y 
+
 # Install onnxruntime-gpu wheel for ARM64 (Jetson)
 COPY ./onnxruntime_gpu-1.18.0-cp310-cp310-linux_aarch64.whl /tmp/
 RUN pip install /tmp/onnxruntime_gpu-1.18.0-cp310-cp310-linux_aarch64.whl  --index-url https://pypi.org/simple && \

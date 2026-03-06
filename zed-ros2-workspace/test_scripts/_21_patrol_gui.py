@@ -10,14 +10,16 @@ from clients.zed_client import ZedClient
 from clients.stt_client import STTClient
 from clients.tts_client import TTSClient
 from clients.face_recognition_client import FaceRecognitionClient
-from clients.vlm_client import VLLMClient
+# from clients.vlm_client import VLLMClient
+from _20_vlm_gui import VLLMClient, VLLMThread
 from zed_wrapper.body_tracking_visualizer import visualize_bodies_2d
 from utils.pid import PIDControllerClass
 
 # GUI
-from PyQt5.QtWidgets import QApplication
-from gui.gui import DemoQtWidget
-from PyQt5.QtCore import QThread
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
+from PyQt5.QtCore import QThread, pyqtSignal, Qt
+from PyQt5.QtGui import QPixmap
+from gui.gui_threads import DemoQtWidget
 
 import rclpy
 from rclpy.node import Node
@@ -28,11 +30,19 @@ from action_msgs.msg import GoalStatusArray
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
 
-WAYPOINTS = [((-2.88689, -1.29752, 0., 0., 0., -0.417859, 0.908512)), #(x,y,z,qx,qy,qz,qw)
-            ((1.56717, -6.46273, 0., 0., 0., -0.418961, 0.908004)),
-            ((3.58321, -8.42727, 0., 0., 0., -0.399719, 0.916638)),
-            # ((7.33938, -12.266, 0., 0., 0., -0.407712, 0.913111))
+# WAYPOINTS = [((-2.88689, -1.29752, 0., 0., 0., -0.417859, 0.908512)), #(x,y,z,qx,qy,qz,qw)
+#             ((1.56717, -6.46273, 0., 0., 0., -0.418961, 0.908004)),
+#             ((3.58321, -8.42727, 0., 0., 0., -0.399719, 0.916638)),
+#             # ((7.33938, -12.266, 0., 0., 0., -0.407712, 0.913111))
+# ]
+
+WAYPOINTS = [((0.694054, -8.85587, 0., 0., 0., -0.684484, 0.729028)), #(x,y,z,qx,qy,qz,qw)
+            ((-4.57819, -14.2423, 0., 0., 0., -0.711791, 0.702391)),
+            ((-5.20466, -22.4224, 0., 0., 0., -0.666923, 0.745127)),
+            ((3.49335, -35.6834, 0., 0., 0., -0.68235, 0.731026))
 ]
+
+
 
 class faceIdentificationWithNav(Node):
     def __init__(self, zed_client, tts_client, face_recognition_client, use_navigation= True, use_audio=True):
@@ -77,8 +87,8 @@ class faceIdentificationWithNav(Node):
             return
         self.image_width = self.zed_client.image_shape[1]
         self.image_height = self.zed_client.image_shape[0]
-        cv2.namedWindow("ZED Client - Body Tracking", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("ZED Client - Body Tracking", self.image_width, self.image_height)
+        # cv2.namedWindow("ZED Client - Body Tracking", cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow("ZED Client - Body Tracking", self.image_width, self.image_height)
 
         # Init ROS2 Components
         self.pub_face_pose = self.create_publisher(PoseStamped, 'face_pose', 10)
@@ -86,6 +96,7 @@ class faceIdentificationWithNav(Node):
         self.pub_pantilt_command = self.create_publisher(Float64MultiArray, 'pantilt_command', 10)
         self.subscription = self.create_subscription(GoalStatusArray,'/navigate_to_pose/_action/status',self.nav_status_callback, 1)
         self.timer = self.create_timer(0.02, self.timer_callback)
+        self.timer_flag = False
 
         # Init pan-tilt pose
         for _ in range(30):
@@ -95,19 +106,20 @@ class faceIdentificationWithNav(Node):
 
     """___MAIN LOOP___"""
     def timer_callback(self):
-        print("A")
+        # print("A")
         # Update Navigation Status
         if self.use_navigation:
             self.handle_nav_goal()
-        if self.stop:
-            print("Scenario Ended")
-            return
+        # if self.stop:
+        #     # print("[NAV2] Stop Flag On")
+        #     time.sleep(0.01)
+        #     return
 
         # Update Image and Bodies from ZED
         image = self.zed_client.grab_image()
         self.image_display = image.copy()
         bodies = self.zed_client.grab_bodies()
-        print("B")
+        # print("B")
         # Check if person detected
         if bodies is not None and len(bodies) > 0: # at least one person detected
             self.image_display = self.overlay_bodies_on_image(self.image_display, bodies)
@@ -137,18 +149,23 @@ class faceIdentificationWithNav(Node):
             if self.navigation_status == "Navigating" and face_recognition_flag:
                 print("Face recognition started, canceling navigation")
                 self.cancel_nav2_navigation()
+                # time.sleep(0.1)
                 return
             # Resume Navigation if there is no person who is not treated before
             elif self.navigation_status == "Cancelled" and not face_recognition_flag:
                 print("Face recognition ended, resuming navigation")
                 self.navigation_resume_flag = True
+                # time.sleep(0.5)
+                time.sleep(0.01)
                 return
-
         else: # nobody detected
             if self.navigation_status == "Cancelled":
                 self.navigation_resume_flag = True
+                # time.sleep(0.5)
+                time.sleep(0.01)
                 return
-        print("C")
+
+        # print("C")
         # Process each face in the threshold distance
         for body in bodies:
             if body['id'] == self.target_id:
@@ -205,9 +222,10 @@ class faceIdentificationWithNav(Node):
                 _, bbox = self.crop_face(image, body)
                 if bbox is not None: # if face is in the image (not out of bounds)
                     self.overlay_face_bbox(self.image_display, bbox, body['id'], self.face_id_memory.get(body['id'], "Not recognized"))
-        print("D")
+        self.timer_flag = True
+        # print("D")
         # self.imshow(self.image_display)
-        print("E")
+        # print("E")
 
     """___NAVIGATION FUNCTIONS___"""
     def send_navigation_goal(self, goal, frame_id='map'):
@@ -218,6 +236,7 @@ class faceIdentificationWithNav(Node):
             Returns:
                 None
         """
+        # 1. heavy
         client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         self.get_logger().info('Waiting for Nav2 action server...')
         if not client.wait_for_server(timeout_sec=10.0):
@@ -259,6 +278,26 @@ class faceIdentificationWithNav(Node):
             self.pantilt_command = [0.,-30.]
             self.publish_pantilt_command()
             self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
+        # # print("Handling navigation goal")
+        # # print("navigation status:", self.navigation_status)
+        # if self.stop and self.navigation_status not in  ["Cancelled", "Goal Reached"]:
+        #     self.cancel_nav2_navigation()
+        #     # self.navigation_resume_flag = True
+        # elif self.navigation_status == "Goal Reached":
+        #     if self.current_waypoint_index < len(self.waypoints) - 1:
+        #         print(f"Updating to waypoint {self.current_waypoint_index + 1}")
+        #         self.current_waypoint_index += 1 # update waypoint index
+        #         self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
+        #     else:
+        #         print("Reached the last waypoint")
+        #         self.navigation_status = "End"
+        #         self.stop = True
+        # elif not self.stop and self.navigation_resume_flag: # kisang, here
+        #     print(f"Resuming navigation to waypoint {self.current_waypoint_index}")
+        #     self.navigation_resume_flag = False
+        #     self.pantilt_command = [0.,-30.]
+        #     self.publish_pantilt_command()
+        #     self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
 
     def cancel_nav2_navigation(self):
         """
@@ -490,52 +529,56 @@ class faceIdentificationWithNav(Node):
     def get_body_ids(self, bodies):
         return [body['id'] for body in bodies]
 
-class nodeThread(QThread):
-    def __init__(self, node):
+class PatrolThread(QThread):
+    signal = pyqtSignal(object) # body_ids, image
+    def __init__(self, patrol_client):
         super().__init__()
-        self.node = node
+        self.client = patrol_client
 
     def run(self):
-        rclpy.spin(self.node)
+        cnt = 0
+        while True:
+            # spin ros2 node
+            rclpy.spin_once(self.client, timeout_sec = 0.02)
+            # print("ros2 node spinning!")
+            # print("navigation status: ", self.client.navigation_status, "waypoint idx: ", self.client.current_waypoint_index/len(WAYPOINTS))
+            if self.client.timer_flag == True:
+                cnt += 1
+                if cnt > 15:
+                    self.signal.emit(self.client.image_display) # image
+
 
 def main():
-    zed_client = ZedClient()
+    app = QApplication(sys.argv)
+    rclpy.init()
     stt_client = STTClient()
     tts_client = TTSClient()
+    zed_client = ZedClient()
     face_recognition_client = FaceRecognitionClient()
-    vlm_client = VLLMClient(stt_client=stt_client, tts_client=tts_client)
-    use_navigation = True
-    use_audio = True
-
-    rclpy.init()
-    node = faceIdentificationWithNav(zed_client, tts_client, face_recognition_client, use_navigation, use_audio)
-    node_thread = nodeThread(node)
-
-    app = QApplication(sys.argv)
-    ex = DemoQtWidget(stt_client, tts_client, vlm_client, node_thread)
-    ex.show()
-    sys.exit(app.exec_())
-
-# def main():
-#     rclpy.init()
-#     face_id_demo = faceIdentificationWithNav(use_navigation=False, use_audio=False)
-#     try:
-#         rclpy.spin(face_id_demo)
-#     except KeyboardInterrupt:
-#         print("Keyboard interrupt")
-#         face_id_demo.cancel_nav2_navigation()
-#     finally:
-#         face_id_demo.cancel_nav2_navigation()
-#         face_id_demo.close()
-#         rclpy.shutdown()
-#         print("Face tracking closed")
-
-# def main():
-#     app = QApplication(sys.argv)
-#     ex = DemoQtWidget()
-#     ex.show()
-#     # Change 2: Use exec_() for PyQt5
-#     sys.exit(app.exec_())
+    patrol_client = faceIdentificationWithNav(
+        zed_client,
+        tts_client,
+        face_recognition_client,
+        use_navigation= True,
+        use_audio=True
+        )
+    patrol_thread = PatrolThread(patrol_client)
+    # vllm_client = VLLMClient(
+    #     api_url = "http://localhost:8000",
+    #     stt_client = stt_client,
+    #     tts_client = tts_client,
+    #     zed_client = zed_client
+    # )
+    # vlm_thread = VLLMThread(vllm_client)
+    qt_widget = DemoQtWidget(
+        # vlm_thread=vlm_thread,
+        vlm_thread=None,
+        patrol_thread=patrol_thread,
+        usertracking_thread=None
+    )
+    qt_widget.show()
+    app.exec_()
+    rclpy.shutdown()
 
 if __name__ == "__main__":
     main()

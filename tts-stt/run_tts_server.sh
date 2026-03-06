@@ -7,7 +7,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="${SCRIPT_DIR}/docker"
 CONTAINER_NAME="base-tts-stt-1"
-DOCKER_COMPOSE_FILE="docker-compose.yaml"
+DOCKER_COMPOSE_FILE="docker-compose.yml"
 COMMAND="cd /root/workspace/tts-stt && python tts_server.py"
 
 # Must run compose from docker dir so volume ../../ resolves to project root
@@ -32,7 +32,7 @@ elif docker ps -a -q -f name=$CONTAINER_NAME | grep -q .; then
   docker start $CONTAINER_NAME
 else
   echo "[*] Creating and starting $CONTAINER_NAME container..."
-  docker compose -f docker-compose.yaml -p $CONTAINER_NAME up -d
+  docker compose -f docker-compose.yml -p $CONTAINER_NAME up -d
 fi
 
 # Run the server inside the container (foreground; Ctrl+C stops the server)

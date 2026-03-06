@@ -59,7 +59,7 @@ class pantiltManager(Node):
         self.sync_read.addParam(102)
 
         self.reset_error()
-        self.set_position([0, 0])
+        self.set_position([0, -30])
 
         self.publisher_pantilt_state = self.create_publisher(
             Float64MultiArray,
