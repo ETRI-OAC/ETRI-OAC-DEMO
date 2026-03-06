@@ -41,15 +41,14 @@ ZED 카메라, LiDAR, Pan-Tilt, CANINE 미들웨어, ROS2/NAV2를 하나의 Dock
 
 ---
 
-### 2. CANINE Middleware
+### 2. CANINE Middleware (`run_middleware.sh`)
 
 - **역할:** OpenPath CANINE 로봇과 통신하는 GUI 애플리케이션. Walk 모드 전환 등 제어를 담당합니다.
-- **실행:** `test_scripts/1_middleware.sh` → `openpath_CANINE_middleware` 빌드 디렉터리에서 `./canine_middleware` 실행.
 - 데모 실행 시 **Middleware GUI에서 로봇을 Walk 모드로 변경**해야 합니다.
 
 ---
 
-### 3. Lidar Server (`2_publish_lidar.sh`)
+### 3. Lidar Server (`run_lidar.sh`)
 
 - **역할:** RPLidar ROS2 노드 실행. `/dev/ttyUSB1`, 1000000 baud, 20Hz 스캔.
 - **출력:** ROS2 토픽으로 라이다 스캔 데이터 퍼블리시 (Nav2 및 SLAM에서 사용).
