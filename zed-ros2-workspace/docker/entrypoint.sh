@@ -38,23 +38,20 @@ PS1+=" \$ "
 
 export PS1
 
-source "/opt/ros/$ROS_DISTRO/install/setup.bash"
+# Source ROS 2 setup (try both install/ subdir and direct, for Humble vs Jazzy compat)
+if [ -f "/opt/ros/$ROS_DISTRO/install/setup.bash" ]; then
+    source "/opt/ros/$ROS_DISTRO/install/setup.bash"
+fi
 source "/opt/ros/$ROS_DISTRO/setup.bash"
 source "/root/ros2_ws/install/local_setup.bash"
 
 EOF
 fi
 
-# echo 'Available ZED packages:'
-# ros2 pkg list | grep zed
-# echo "---------------------"
-# echo 'To start a ZED camera node:'
-# echo '  ros2 launch zed_wrapper zed_camera.launch.py camera_model:=<zed|zedm|zed2|zed2i|zedx|zedxm|zedxonegs|zedxone4k|zedxonehdr|virtual>'
-# echo "---------------------"
-# exec "$@"
-
-# setup ros2 environment
-source "/opt/ros/$ROS_DISTRO/install/setup.bash"
+# setup ros2 environment (try both install/ subdir and direct, for Humble vs Jazzy compat)
+if [ -f "/opt/ros/$ROS_DISTRO/install/setup.bash" ]; then
+    source "/opt/ros/$ROS_DISTRO/install/setup.bash"
+fi
 source "/opt/ros/$ROS_DISTRO/setup.bash"
 source "/root/ros2_ws/install/local_setup.bash"
 

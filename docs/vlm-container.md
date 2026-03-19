@@ -9,7 +9,7 @@ Vision-Language Model(VLM) 추론을 위한 **vLLM** 서버를 Docker 컨테이�
 
 | 항목 | 내용 |
 |------|------|
-| **이미지** | `ghcr.io/nvidia-ai-iot/vllm:latest-jetson-orin` |
+| **이미지** | `vllm/vllm-openai:latest` |
 | **실행** | `vlm/run_vlm_server.sh` |
 | **모델** | `cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit` (AWQ 4bit 양자화) |
 | **옵션** | `--gpu-memory-utilization 0.3` / `--max-model-len 8192` |

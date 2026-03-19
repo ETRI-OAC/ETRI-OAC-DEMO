@@ -32,12 +32,13 @@
 
 ## Preliminaries
 
-### Jetson AGX Orin 구동 환경
+### 구동 환경
 
 | 항목   | 버전    |
 |--------|---------|
-| L4T    | 36.4.7  |
-| Ubuntu | 22.04   |
+| Ubuntu | 24.04   |
+| ROS 2  | Jazzy Jalisco |
+| CUDA   | 12.6    |
 
 ### 1. Git LFS 파일 받아오기
 

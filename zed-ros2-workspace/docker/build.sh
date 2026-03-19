@@ -1,62 +1,35 @@
 #!/bin/bash
 cd $(dirname $0)
 
-if [ "$#" -lt 2 ]; then
+if [ "$#" -lt 1 ]; then
     # Use default versions when not provided
-    L4T_DEFAULT="l4t-r36.4.0"
-    ZED_SDK_DEFAULT="zedsdk-5.1.0"
-    echo "No L4T / ZED SDK versions provided, using defaults:"
-    echo "  L4T_VERSION=${L4T_DEFAULT}"
+    ZED_SDK_DEFAULT="zedsdk-4.2.3"
+    CUDA_DEFAULT="cu126"
+    echo "No ZED SDK version provided, using defaults:"
     echo "  ZED_SDK_VERSION=${ZED_SDK_DEFAULT}"
-    set -- "$L4T_DEFAULT" "$ZED_SDK_DEFAULT"
+    echo "  CUDA_VERSION=${CUDA_DEFAULT}"
+    set -- "$ZED_SDK_DEFAULT" "$CUDA_DEFAULT"
 fi
 
-# L4T version
-# Verify the format (l4t-r digits.digits.digits)
-if ! [[ $1 =~ ^l4t-r[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "Invalid L4T version format."
-    exit 1
-fi
+ZED_SDK_version=$1
+CUDA_VERSION=${2:-cu126}
 
-L4T_version=$1
-# Remove the prefix 'l4t-r'
-l4t_version_number="${L4T_version#l4t-r}"
-
-
-ZED_SDK_version=$2
-
-# Split the string and assign to variables
-IFS='.' read -r l4t_major l4t_minor l4t_patch <<< "$l4t_version_number"
-###########
-
-L4T_VERSION=${1:-l4t-r${l4t_major}.${l4t_minor}.${l4t_patch}}
-
-# Determine the IMAGE_NAME based on the L4T_VERSION
-if [[ "$L4T_VERSION" == *"l4t-r36.4"* ]]; then
-    IMAGE_NAME="dustynv/ros:humble-desktop-${L4T_VERSION}"
-else
-    IMAGE_NAME="dustynv/ros:humble-ros-base-${L4T_VERSION}"
-fi
-
-# Check if the third arg is a custom path
-CUSTOM_ZED_SDK_URL=$2
+# Check if the first arg is a custom URL
+CUSTOM_ZED_SDK_URL=$1
 # Use curl to check if the URL is valid (returns HTTP 200)
 if [ "$(curl -L -I "${CUSTOM_ZED_SDK_URL}" -o /dev/null -s -w '%{http_code}\n' | head -n 1)" = "200" ]; then
     echo "${ZED_SDK_version} detected as a valid custom installer URL"
 
-    echo "Building dockerfile for $1 and a custom ZED SDK"
+    echo "Building dockerfile with a custom ZED SDK URL"
 
-    docker build -t zed_ros2_l4t_${l4t_major}.${l4t_minor}.${l4t_patch}_sdk_custom \
+    docker build -t zed_ros2_ubuntu24_sdk_custom \
     --build-arg CUSTOM_ZED_SDK_URL=$CUSTOM_ZED_SDK_URL \
-    --build-arg L4T_VERSION=$1 \
-    --build-arg L4T_MAJOR=$l4t_major \
-    --build-arg L4T_MINOR=$l4t_minor \
-    --build-arg IMAGE_NAME=$IMAGE_NAME \
-    -f ./Dockerfile.l4t-humble .
+    --build-arg CUDA_VERSION=$CUDA_VERSION \
+    -f ./Dockerfile.ubuntu-jazzy .
 else
     # Verify the ZED SDK format (digits.digits.digits)
-    if ! [[ $2 =~ ^zedsdk-[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "Invalid ZED SDK version format."
+    if ! [[ $1 =~ ^zedsdk-[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Invalid ZED SDK version format. Expected: zedsdk-X.Y.Z"
         exit 1
     fi
 
@@ -66,15 +39,12 @@ else
     # Split the string and assign to variables
     IFS='.' read -r sdk_major sdk_minor sdk_patch <<< "$zed_sdk_version_number"
 
-    echo "Building dockerfile for $1 and ZED SDK $2"
+    echo "Building dockerfile for Ubuntu 24.04 with ZED SDK $1 and CUDA $CUDA_VERSION"
 
-    docker build -t zed_ros2_l4t_${l4t_major}.${l4t_minor}.${l4t_patch}_sdk_${sdk_major}.${sdk_minor}.${sdk_patch} \
+    docker build -t zed_ros2_ubuntu24_sdk_${sdk_major}.${sdk_minor}.${sdk_patch} \
     --build-arg ZED_SDK_MAJOR=$sdk_major \
     --build-arg ZED_SDK_MINOR=$sdk_minor \
     --build-arg ZED_SDK_PATCH=$sdk_patch \
-    --build-arg L4T_VERSION=$1 \
-    --build-arg L4T_MAJOR=$l4t_major \
-    --build-arg L4T_MINOR=$l4t_minor \
-    --build-arg IMAGE_NAME=$IMAGE_NAME \
-    -f ./Dockerfile.l4t-humble .
+    --build-arg CUDA_VERSION=$CUDA_VERSION \
+    -f ./Dockerfile.ubuntu-jazzy .
 fi

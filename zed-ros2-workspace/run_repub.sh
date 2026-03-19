@@ -8,8 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="${SCRIPT_DIR}/docker"
 CONTAINER_NAME="base-zed_ros2_env-1"
 DOCKER_COMPOSE_FILE="docker-compose.yaml"
-COMMAND=""" source '/opt/ros/humble/install/setup.bash' && \
-source '/opt/ros/humble/setup.bash' && \
+COMMAND="""source '/opt/ros/jazzy/setup.bash' && \
 source '/root/ros2_ws/install/local_setup.bash' && \
 cd /root/workspace/zed-ros2-workspace/SLAM_Nav && python repub_twist2canine.py"""
 

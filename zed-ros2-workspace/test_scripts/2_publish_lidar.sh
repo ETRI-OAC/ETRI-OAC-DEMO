@@ -1,4 +1,6 @@
-source "/opt/ros/$ROS_DISTRO/install/setup.bash"
+if [ -f "/opt/ros/$ROS_DISTRO/install/setup.bash" ]; then
+    source "/opt/ros/$ROS_DISTRO/install/setup.bash"
+fi
 source "/opt/ros/$ROS_DISTRO/setup.bash"
 source "/root/ros2_ws/install/local_setup.bash"
 

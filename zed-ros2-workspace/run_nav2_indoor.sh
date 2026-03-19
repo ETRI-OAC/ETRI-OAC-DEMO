@@ -8,8 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="${SCRIPT_DIR}/docker"
 CONTAINER_NAME="base-zed_ros2_env-1"
 DOCKER_COMPOSE_FILE="docker-compose.yaml"
-COMMAND="""source "/opt/ros/humble/install/setup.bash" && \
-source "/opt/ros/humble/setup.bash" && \
+COMMAND="""source "/opt/ros/jazzy/setup.bash" && \
 source "/root/ros2_ws/install/local_setup.bash" && \
 ros2 launch nav2_bringup bringup_launch.py map:=/root/workspace/zed-ros2-workspace/SLAM_Nav/map/map_etri.yaml params_file:=/root/workspace/zed-ros2-workspace/SLAM_Nav/config/nav2_params.yaml"""
 

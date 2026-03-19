@@ -1,5 +1,5 @@
-# Ultralytics YOLO for JetPack 6 (PyTorch + CUDA already configured)
-FROM ultralytics/ultralytics:latest-jetson-jetpack6
+# Ultralytics YOLO for Ubuntu 24.04 Desktop (no JetPack)
+FROM ultralytics/ultralytics:latest
 
 ENV DEBIAN_FRONTEND=noninteractive
 
