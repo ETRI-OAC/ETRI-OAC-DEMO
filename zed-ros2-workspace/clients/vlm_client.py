@@ -22,7 +22,7 @@ class VLLMClient:
     vLLM 서버 클라이언트
     """
     
-    def __init__(self, api_url: str = "http://localhost:8000", model: str = "cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit",
+    def __init__(self, api_url: str = "http://localhost:8000", model: str = "gemma-3-4b-it-mm-ryzenai",
                  max_tokens: int = 512, temperature: float = 0.7, stt_client: STTClient = None, tts_client: TTSClient = None):
         """
         vLLM 클라이언트 초기화

@@ -17,7 +17,7 @@ tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./face-recognition/run_fa
 tmux split-window -v -t "$SESSION.0" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_middleware.sh; exec bash"
 tmux split-window -v -t "$SESSION.4" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_lidar.sh; exec bash"
 tmux split-window -v -t "$SESSION.5" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_pantilt.sh; exec bash"
-tmux split-window -v -t "$SESSION.6" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_zed_server.sh; exec bash"
+tmux split-window -v -t "$SESSION.6" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_oak_server.sh; exec bash"
 
 # Even out pane sizes
 tmux select-layout -t "$SESSION" tiled

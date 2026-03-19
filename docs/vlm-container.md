@@ -9,13 +9,12 @@ Vision-Language Model(VLM) 추론을 위한 **vLLM** 서버를 Docker 컨테이�
 
 | 항목 | 내용 |
 |------|------|
-| **이미지** | `vllm/vllm-openai:latest` |
 | **실행** | `vlm/run_vlm_server.sh` |
-| **모델** | `cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit` (AWQ 4bit 양자화) |
-| **옵션** | `--gpu-memory-utilization 0.3` / `--max-model-len 8192` |
-| **네트워크** | `--network host` (호스트와 포트 공유) |
+| **모델** | `amd/Gemma-3-4b-it-mm-onnx-ryzenai-npu` (AWQ UINT4, ONNX) |
+| **추론** | Ryzen AI 350 NPU (VitisAI EP) / CPU fallback |
+| **포트** | `8000` (OpenAI 호환 API) |
 
-vLLM은 서버 기동 시 모델을 다운로드·캐시합니다. **첫 실행**은 시간이 걸리며, 이후에는 기존 컨테이너를 재시작해 캐시된 모델을 재사용합니다.
+첫 실행 시 HuggingFace에서 모델을 다운로드합니다. 이후에는 `vlm/models/`에 캐시된 모델을 재사용합니다.
 
 ---
 

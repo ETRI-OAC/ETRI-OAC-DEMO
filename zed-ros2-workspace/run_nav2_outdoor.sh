@@ -1,6 +1,5 @@
 #!/bin/bash
-# Run face_recognition_server.py inside the face-recognition:latest container.
-# Ensures the container is started, then executes the server in /root/workspace/face-recognition.
+# Run Nav2 outdoor user following (no map, SLAM) inside the OAK-ROS2 container.
 
 set -e
 

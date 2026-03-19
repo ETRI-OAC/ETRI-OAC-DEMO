@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Robotics demo system for Ubuntu 24.04 (Desktop, x86_64) integrating OAK-D Pro W stereo camera (DepthAI), ROS 2 Jazzy Jalisco navigation, vision-language model inference, Korean TTS/STT, face recognition, and Dynamixel pan-tilt servos on a quadruped robot (CANINE middleware). Documentation is primarily in Korean.
+Robotics demo system on AMD Ryzen AI 350 (Ubuntu 24.04, no CUDA/GPU) integrating OAK-D Pro W stereo camera (DepthAI), Hailo-10 AI accelerator (M.2 #2, pose estimation), Ryzen AI NPU for VLM, ROS 2 Jazzy Jalisco navigation, Korean TTS/STT (CPU), face recognition (CPU), and Dynamixel pan-tilt servos on a quadruped robot (CANINE middleware). Documentation is primarily in Korean.
 
 ## Architecture
 
@@ -12,10 +12,10 @@ Four Docker containers communicate over host network:
 
 | Container | Base Image | Purpose | Port |
 |-----------|-----------|---------|------|
-| **OAK-ROS2** | `ros:jazzy-ros-base-noble` | ROS 2, Nav2, DepthAI (OAK-D Pro W), CANINE middleware, LiDAR, pan-tilt | ROS 2 topics |
-| **VLM** | `vllm/vllm-openai:latest` | vLLM with Qwen3-VL-4B (AWQ 4-bit) | 8000 |
-| **TTS-STT** | `nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04` | Sherpa-ONNX Korean TTS + Whisper STT | TTS: 8002, STT: 8001 |
-| **Face Recognition** | `ultralytics/ultralytics:latest` | InsightFace (ArcFace) | 7999 |
+| **OAK-ROS2** | `ros:jazzy-ros-base-noble` | ROS 2, Nav2, DepthAI (OAK-D Pro W), Hailo-10 M.2#2 (YOLOv8s-pose), CANINE middleware, LiDAR, pan-tilt | ROS 2 topics |
+| **VLM** | `ubuntu:24.04` + ONNX RT | Gemma-3-4b-it-mm on Ryzen AI 350 NPU | 8000 |
+| **TTS-STT** | `ubuntu:24.04` | Sherpa-ONNX Korean TTS + Whisper STT (auto: Hailo-10[1] if 2개, else CPU) | TTS: 8002, STT: 8001 |
+| **Face Recognition** | `ubuntu:24.04` | InsightFace ArcFace (detection: Hailo-10 공유, embedding: CPU) | 7999 |
 
 ### Shared Memory IPC (`/dev/shm`)
 
@@ -134,7 +134,7 @@ Test scripts in `zed-ros2-workspace/test_scripts/` build incrementally:
 
 ## Development Notes
 
-- Camera shared memory connection breaks when main scripts exit; restart camera server (`./zed-ros2-workspace/run_zed_server.sh`) before re-running demo scripts
+- Camera shared memory connection breaks when main scripts exit; restart camera server (`./zed-ros2-workspace/run_oak_server.sh`) before re-running demo scripts
 - VLM server takes up to 5 minutes to start; first query requires network connectivity. VLM container is reused on restart (model cached inside container)
 - LiDAR/pan-tilt recovery after disconnect: physically re-plug USB, then run `./zed-ros2-workspace/run_lidar.sh` or `./zed-ros2-workspace/run_pantilt.sh`
 - Face recognition requires pre-registration via `face-recognition/register_face.py` (stores pickled embeddings in `face-recognition/database/`)

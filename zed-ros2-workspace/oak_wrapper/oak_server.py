@@ -26,6 +26,8 @@ except ImportError:
 
 from person_tracker import PersonTracker
 from head_pose_estimator import estimate_head_orientation, estimate_head_bounding_box
+from hailo_utils import detect_hailo_device
+from hailo_model_downloader import get_hef_path
 
 # ---------------------------------------------------------------------------
 # Shared memory constants (must match zed_client.py exactly)
@@ -75,7 +77,8 @@ def allocate_size(width: int, height: int, channels: int, bytes_per_channel: int
 class HailoPoseEstimator:
     """YOLOv8s-pose inference on Hailo-10 via HailoRT."""
 
-    def __init__(self, hef_path: str, input_size: int = 640, score_threshold: float = 0.3):
+    def __init__(self, hef_path: str, input_size: int = 640, score_threshold: float = 0.3,
+                 device_id: Optional[str] = None):
         self.input_size = input_size
         self.score_threshold = score_threshold
 
@@ -97,7 +100,17 @@ class HailoPoseEstimator:
             raise FileNotFoundError(f"Hailo HEF model not found: {hef_path}")
 
         self.hef = HEF(hef_path)
-        self.target = VDevice()
+
+        # Select specific Hailo device by ID (e.g. "0000:01:00.0")
+        # When None, uses first available device
+        if device_id:
+            params = VDevice.create_params()
+            params.device_ids = [device_id]
+            self.target = VDevice(params)
+            print(f"[HAILO] Using device: {device_id}")
+        else:
+            self.target = VDevice()
+
         configure_params = ConfigureParams.create_from_hef(
             self.hef, interface=HailoStreamInterface.PCIe
         )
@@ -249,6 +262,8 @@ class OakImageServer:
         shm_image_name: str = SHM_IMAGE_NAME,
         shm_body_name: str = SHM_BODY_NAME,
         hef_path: Optional[str] = None,
+        hailo_device_id: Optional[str] = None,
+        hailo_device_index: int = 0,
         debug: bool = False,
     ):
         self.shm_image_name = shm_image_name
@@ -269,10 +284,16 @@ class OakImageServer:
         # Person tracker for persistent IDs
         self.tracker = PersonTracker()
 
-        # Hailo-10 pose estimator
+        # Hailo-10 pose estimator (auto-detect device + auto-download model)
         self.pose_estimator: Optional[HailoPoseEstimator] = None
+        if hef_path is None:
+            # Auto-download YOLOv8s-pose HEF
+            hef_path = get_hef_path("yolov8s_pose")
         if hef_path:
-            self.pose_estimator = HailoPoseEstimator(hef_path)
+            if hailo_device_id is None:
+                hailo_device_id = detect_hailo_device(device_index=hailo_device_index)
+            if hailo_device_id is not None or hailo_device_index == 0:
+                self.pose_estimator = HailoPoseEstimator(hef_path, device_id=hailo_device_id)
 
         # FPS tracking
         self._last_fps_time: Optional[float] = None
@@ -633,11 +654,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="OAK-D Pro W + Hailo-10 camera server")
     parser.add_argument("--hef", type=str, default=None,
                         help="Path to YOLOv8s-pose .hef model for Hailo-10")
+    parser.add_argument("--hailo-device", type=str, default=None,
+                        help="Hailo device ID (e.g. '0000:02:00.0'). Default: auto-detect")
+    parser.add_argument("--hailo-index", type=int, default=0,
+                        help="Hailo device index when multiple present (default: 0)")
     parser.add_argument("--debug", action="store_true",
                         help="Enable FPS debug output")
     args = parser.parse_args()
 
-    server = OakImageServer(hef_path=args.hef, debug=args.debug)
+    server = OakImageServer(hef_path=args.hef, hailo_device_id=args.hailo_device,
+                            hailo_device_index=args.hailo_index, debug=args.debug)
     server.run()
 
 

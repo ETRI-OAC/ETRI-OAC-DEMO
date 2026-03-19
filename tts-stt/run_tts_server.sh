@@ -1,6 +1,5 @@
 #!/bin/bash
-# Run face_recognition_server.py inside the face-recognition:latest container.
-# Ensures the container is started, then executes the server in /root/workspace/face-recognition.
+# Run tts_server.py inside the tts-stt container (Korean TTS, port 8002).
 
 set -e
 

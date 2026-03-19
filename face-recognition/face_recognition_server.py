@@ -143,18 +143,27 @@ def main():
                        help='Number of warmup iterations (default: 100)')
     parser.add_argument('--warmup-image', type=str, default=None,
                        help='Path to image for warmup (default: auto-detect or create dummy)')
-    
+    parser.add_argument('--hailo-hef', type=str, default=None,
+                       help='Path to SCRFD .hef for Hailo-10 face detection (optional)')
+    parser.add_argument('--hailo-device', type=str, default=None,
+                       help='Hailo device ID (e.g. "0000:02:00.0"). Default: auto-detect')
+    parser.add_argument('--hailo-index', type=int, default=0,
+                       help='Hailo device index when multiple present (default: 0)')
+
     args = parser.parse_args()
-    
+
     # Initialize FaceRecognizer
     global recognizer
     print("=" * 60)
     print("Initializing Face Recognition Server...")
     print("=" * 60)
-    
+
     recognizer = FaceRecognizer(
         model_name=args.model,
-        similarity_threshold=args.threshold
+        similarity_threshold=args.threshold,
+        hailo_hef_path=args.hailo_hef,
+        hailo_device_id=args.hailo_device,
+        hailo_device_index=args.hailo_index,
     )
     
     # Load database

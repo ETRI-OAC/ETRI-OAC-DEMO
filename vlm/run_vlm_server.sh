@@ -1,30 +1,33 @@
-# Reuse existing container so the model is only downloaded on first run
-CONTAINER_NAME="vlm-server"
-IMAGE="vllm/vllm-openai:latest"
-VLLM_CMD="vllm serve cpatonn/Qwen3-VL-4B-Instruct-AWQ-4bit --gpu-memory-utilization 0.3 --max-model-len 8192"
+#!/bin/bash
+# Run VLM server using Gemma-3-4b-it-mm on Ryzen AI NPU (no CUDA)
+# Uses AMD's ONNX Runtime with Ryzen AI EP for NPU inference.
+# Provides an OpenAI-compatible API on port 8000.
 
-# Check if the image exists locally. If not, pull it.
-if ! docker image inspect "$IMAGE" > /dev/null 2>&1; then
-  echo "Image $IMAGE not found locally. Pulling from registry..."
-  docker pull "$IMAGE"
-else
-  echo "Image $IMAGE found locally."
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODEL_DIR="${SCRIPT_DIR}/models/Gemma-3-4b-it-mm-onnx-ryzenai-npu"
+SERVER_SCRIPT="${SCRIPT_DIR}/vlm_server.py"
+PORT=8000
+
+# Check if model is downloaded
+if [ ! -d "$MODEL_DIR" ]; then
+  echo "Model not found at $MODEL_DIR"
+  echo "Downloading from HuggingFace..."
+  pip install huggingface_hub 2>/dev/null || true
+  python3 -c "
+from huggingface_hub import snapshot_download
+snapshot_download(
+    repo_id='amd/Gemma-3-4b-it-mm-onnx-ryzenai-npu',
+    local_dir='${MODEL_DIR}',
+)
+print('Download complete.')
+"
 fi
 
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-  # Container already exists (from first run) – start it (model is already cached inside)
-  if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    echo "Container already running. Attaching..."
-    docker attach "$CONTAINER_NAME"
-  else
-    echo "Starting existing container (model already cached)..."
-    docker start -a "$CONTAINER_NAME"
-  fi
-else
-  # First run – create named container (model will be downloaded; container is kept after exit)
-  echo "First run: creating container and downloading model..."
-  docker run -it --name "$CONTAINER_NAME" --runtime=nvidia --network host \
-  --gpus all \
-  --pull never \
-  "$IMAGE" $VLLM_CMD
-fi
+echo "Starting VLM server (Gemma-3-4b-it-mm on Ryzen AI NPU)..."
+echo "  Model: $MODEL_DIR"
+echo "  Port:  $PORT"
+echo "  API:   http://localhost:${PORT}/v1/chat/completions"
+
+python3 "$SERVER_SCRIPT" --model-dir "$MODEL_DIR" --port "$PORT"

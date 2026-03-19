@@ -1,6 +1,5 @@
 #!/bin/bash
-# Run face_recognition_server.py inside the face-recognition:latest container.
-# Ensures the container is started, then executes the server in /root/workspace/face-recognition.
+# Run oak_server.py (OAK-D Pro W camera + Hailo-10 pose) inside the OAK-ROS2 container.
 
 set -e
 
@@ -36,5 +35,5 @@ else
 fi
 
 # Run the server inside the container (foreground; Ctrl+C stops the server)
-echo "[*] Running zed_server.py in container..."
+echo "[*] Running oak_server.py in container..."
 docker exec -it $CONTAINER_NAME bash -c "$COMMAND"
