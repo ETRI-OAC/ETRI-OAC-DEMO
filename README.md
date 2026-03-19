@@ -477,7 +477,7 @@ cd face-recognition/docker && ./exec.sh
 
 | 컨테이너 | 문서 |
 |----------|------|
-| **OAK-ROS2** | [docs/zed-ros2-container.md](docs/zed-ros2-container.md) |
+| **OAK-ROS2** | [docs/zed-ros2-container.md](docs/zed-ros2-container.md) ※ 폴더명 `zed-ros2-workspace`는 레거시 |
 | **VLM** | [docs/vlm-container.md](docs/vlm-container.md) |
 | **TTS-STT** | [docs/tts-stt-container.md](docs/tts-stt-container.md) |
 | **Face Recognition** | [docs/face-recognition-container.md](docs/face-recognition-container.md) |
