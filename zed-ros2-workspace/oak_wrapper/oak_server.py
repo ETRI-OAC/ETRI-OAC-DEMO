@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-OAK-D Pro (camera) + Hailo-10 (pose estimation) server using shared memory.
+OAK-D Pro W (camera) + Hailo-10 (pose estimation) server using shared memory.
 
 Drop-in replacement for zed_server.py:
-  - OAK-D Pro: RGB frames + stereo depth via DepthAI (no on-device NN)
+  - OAK-D Pro W: RGB frames + stereo depth via DepthAI (no on-device NN)
   - Hailo-10:  YOLOv8n-pose inference via HailoRT for body tracking
   - Output:    Same shared memory binary format as zed_server.py
 
@@ -630,7 +630,7 @@ class OakImageServer:
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(description="OAK-D Pro + Hailo-10 camera server")
+    parser = argparse.ArgumentParser(description="OAK-D Pro W + Hailo-10 camera server")
     parser.add_argument("--hef", type=str, default=None,
                         help="Path to YOLOv8s-pose .hef model for Hailo-10")
     parser.add_argument("--debug", action="store_true",

@@ -38,7 +38,7 @@
 |--------|-------------|
 | Ubuntu | 24.04       |
 | ROS 2  | Jazzy Jalisco |
-| 카메라 | OAK-D Pro (DepthAI) |
+| 카메라 | OAK-D Pro W (DepthAI) |
 | AI 가속기 | Hailo-10 (YOLOv8s-pose) |
 | CUDA   | 12.6        |
 
@@ -52,9 +52,9 @@ git lfs install
 git lfs pull
 ```
 
-### 2. OAK-D Pro USB 설정
+### 2. OAK-D Pro W USB 설정
 
-OAK-D Pro를 **USB3 포트**에 연결하세요 (USB2는 대역폭 부족).
+OAK-D Pro W를 **USB3 포트**에 연결하세요 (USB2는 대역폭 부족).
 
 ```bash
 # USB 장치 인식 확인
@@ -247,7 +247,7 @@ cd zed-ros2-workspace
 ./run_zed_server.sh
 ```
 
-### OAK-D Pro 연결 문제
+### OAK-D Pro W 연결 문제
 
 | 증상 | 해결 |
 |------|------|

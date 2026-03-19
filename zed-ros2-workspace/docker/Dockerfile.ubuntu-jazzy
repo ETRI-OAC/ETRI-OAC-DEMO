@@ -1,4 +1,4 @@
-# Ubuntu 24.04 (Noble) + ROS 2 Jazzy + OAK-D Pro (DepthAI, no ZED/JetPack)
+# Ubuntu 24.04 (Noble) + ROS 2 Jazzy + OAK-D Pro W (DepthAI, no ZED/JetPack)
 ARG IMAGE_NAME=ros:jazzy-ros-base-noble
 
 FROM ${IMAGE_NAME}
@@ -74,7 +74,7 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o 
    apt-get -o Dpkg::Options::="--force-overwrite" install ros-jazzy-navigation2 ros-jazzy-nav2-bringup -y && \
    rm -rf /var/lib/apt/lists/*
 
-# OAK-D Pro (DepthAI SDK — camera only, no on-device NN)
+# OAK-D Pro W (DepthAI SDK — camera only, no on-device NN)
 RUN pip install --break-system-packages depthai
 
 # Hailo-10 (HailoRT for pose estimation inference)
