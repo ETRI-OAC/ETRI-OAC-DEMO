@@ -1,6 +1,6 @@
 services:
   zed_ros2_env:
-    image: zed_ros2_ubuntu24_sdk_4.2.3:latest
+    image: oak_ros2_ubuntu24:latest
     runtime: nvidia
     privileged: true
     stdin_open: true  # equivalent to -it
@@ -15,8 +15,6 @@ services:
     volumes:
       - /tmp:/tmp
       - /dev:/dev
-      - /usr/local/zed/resources/:/usr/local/zed/resources/
-      - /usr/local/zed/settings/:/usr/local/zed/settings/
       - ${PWD}/../../:/root/workspace/
     deploy:
       resources:

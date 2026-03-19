@@ -30,7 +30,7 @@ bright_cyan="\[\033[1;36m\]"
 bright_white="\[\033[1;37m\]"
 
 # Prompt format with git branch
-PS1="🐳 ZED-ROS2 "
+PS1="🐳 OAK-ROS2 "
 PS1+="${bright_green}\u${reset}"                   # user
 PS1+=":${bright_blue}\w${reset}"                   # path
 PS1+='$( __git_ps1 " ['"${bright_cyan}"'%s'"${reset}"']" )'  # branch
@@ -58,7 +58,7 @@ source "/root/ros2_ws/install/local_setup.bash"
 export ROS_DOMAIN_ID=0
 
 # Welcome information
-echo "ZED ROS2 Docker Image"
+echo "OAK-D ROS2 Docker Image"
 echo "---------------------"
 echo 'ROS distro: ' $ROS_DISTRO
 echo 'DDS middleware: ' $RMW_IMPLEMENTATION
@@ -75,7 +75,7 @@ if [ -d "/home" ]; then
     git config --global --add safe.directory /home || true
 fi
 
-echo "ZED-ROS2 container is ready!"
+echo "OAK-ROS2 container is ready!"
 
 # Start an interactive shell
 exec bash
