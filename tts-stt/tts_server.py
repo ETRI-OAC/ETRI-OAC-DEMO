@@ -148,7 +148,7 @@ def _speak_worker():
             print(f"[TTS] speak_async worker loop error: {e}")
 
 
-def create_synthesizer(provider="cuda"):
+def create_synthesizer(provider="cpu"):
     """Create Sherpa-ONNX offline TTS synthesizer."""
     config = sherpa_onnx.OfflineTtsConfig(
         model=sherpa_onnx.OfflineTtsModelConfig(
@@ -303,9 +303,9 @@ def main():
     parser.add_argument(
         "--provider",
         type=str,
-        default="cuda",
-        choices=["cpu", "cuda"],
-        help="ONNX provider (default: cuda)",
+        default="cpu",
+        choices=["cpu"],
+        help="ONNX provider (default: cpu)",
     )
     parser.add_argument(
         "--debug",

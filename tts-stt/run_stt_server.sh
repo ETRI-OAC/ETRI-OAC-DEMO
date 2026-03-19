@@ -35,7 +35,7 @@ else
 fi
 
 # Run the server inside the container (foreground; Ctrl+C stops the server)
-echo "[*] Running tts_server.py in container..."
+echo "[*] Running stt_server.py in container..."
 docker exec -it $CONTAINER_NAME bash -c "$COMMAND"
 
 # Optional: revoke xhost when script exits

@@ -6,7 +6,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="${SCRIPT_DIR}/docker"
 CONTAINER_NAME="base-zed_ros2_env-1"
-DOCKER_COMPOSE_FILE="docker-compose.yaml"
+DOCKER_COMPOSE_FILE="docker-compose.yml"
 COMMAND="""source "/opt/ros/jazzy/setup.bash" && \
 source "/root/ros2_ws/install/local_setup.bash" && \
 ros2 launch /root/workspace/zed-ros2-workspace/SLAM_Nav/launch/bringup_wo_map_launch.py params_file:=/root/workspace/zed-ros2-workspace/SLAM_Nav/config/following_params_outdoor.yaml"""
@@ -33,7 +33,7 @@ elif docker ps -a -q -f name=$CONTAINER_NAME | grep -q .; then
   docker start $CONTAINER_NAME
 else
   echo "[*] Creating and starting $CONTAINER_NAME container..."
-  docker compose -f docker-compose.yaml -p $CONTAINER_NAME up -d
+  docker compose -f docker-compose.yml -p $CONTAINER_NAME up -d
 fi
 
 # Run the server inside the container (foreground; Ctrl+C stops the server)

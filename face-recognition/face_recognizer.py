@@ -90,23 +90,47 @@ class FaceRecognizer:
         """Detect faces using Hailo or CPU backend.
 
         Returns:
-            List of InsightFace Face objects (with bbox, embedding, etc.)
+            List of dicts with 'bbox' and 'embedding' (or InsightFace Face objects).
         """
         if self.hailo_detector is not None:
-            # Hailo detection → InsightFace embedding
+            # Hailo detection only → then CPU ArcFace embedding per crop
             hailo_dets = self.hailo_detector.detect(image)
             if not hailo_dets:
                 return []
 
-            # For each detected face, crop and get embedding via InsightFace
-            # We still use self.app.get() but could optimize by using
-            # the rec model directly with the cropped face
-            # For now, use full InsightFace pipeline (it will re-detect but
-            # the face should be there since Hailo already found it)
-            faces = self.app.get(image)
+            # Get the ArcFace recognition model from InsightFace
+            rec_model = None
+            for model in self.app.models:
+                if hasattr(model, 'get_feat') or hasattr(model, 'get'):
+                    rec_model = model
+                    break
+
+            faces = []
+            for det in hailo_dets:
+                x1, y1, x2, y2 = det["bbox"]
+                x1, y1 = max(0, x1), max(0, y1)
+                x2, y2 = min(image.shape[1], x2), min(image.shape[0], y2)
+                if x2 <= x1 or y2 <= y1:
+                    continue
+
+                face_crop = image[y1:y2, x1:x2]
+
+                # Get embedding via InsightFace rec model on the crop
+                # Pad crop for better detection by the embedding model
+                pad = int(max(face_crop.shape[:2]) * 0.3)
+                padded = cv2.copyMakeBorder(
+                    face_crop, pad, pad, pad, pad,
+                    cv2.BORDER_CONSTANT, value=(0, 0, 0)
+                )
+                # Use InsightFace on the padded crop (detection + embedding)
+                # This is a small crop so CPU detection is fast
+                sub_faces = self.app.get(padded)
+                if sub_faces:
+                    faces.append(sub_faces[0])
+
             return faces
         else:
-            # CPU-only: InsightFace handles everything
+            # CPU-only: InsightFace handles detection + embedding together
             return self.app.get(image)
 
     def get_embedding(self, face_image: np.ndarray) -> Optional[np.ndarray]:
