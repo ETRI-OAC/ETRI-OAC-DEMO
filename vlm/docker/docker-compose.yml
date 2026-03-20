@@ -1,0 +1,17 @@
+services:
+  vlm:
+    container_name: vlm-server
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vlm-ryzenai:latest
+    volumes:
+      - "../../:/root/workspace"
+    privileged: true
+    network_mode: host
+    ipc: "host"
+    command: >
+      python3 /root/workspace/vlm/vlm_server.py
+      --model-dir /root/workspace/vlm/models/Gemma-3-4b-it-mm-onnx-ryzenai-npu
+      --port 8000
+    restart: unless-stopped

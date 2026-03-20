@@ -62,8 +62,8 @@ FSM states: `INITIAL, INITIALIZING, READY, HOME_UP, HOME_DOWN, EMERGENCY_STOP, S
 
 ### Build containers (first-time setup, run in order)
 ```bash
-cd zed-ros2-workspace/docker && ./build.sh          # ZED-ROS2
-cd vlm && ./run_vlm_server.sh                        # VLM (Ctrl+C after first run)
+cd zed-ros2-workspace/docker && ./build.sh          # OAK-ROS2
+cd vlm/docker && ./compose_up.sh                     # VLM (Ctrl+C after build)
 cd tts-stt/docker && ./compose_up.sh                 # TTS-STT (Ctrl+C after build)
 cd face-recognition/docker && ./compose_up.sh        # Face Recognition (Ctrl+C after build)
 ```
@@ -75,7 +75,7 @@ cd face-recognition/docker && ./compose_up.sh        # Face Recognition (Ctrl+C 
 
 ### Enter a running container
 ```bash
-cd {service}/docker && ./exec.sh    # Works for zed-ros2-workspace, tts-stt, face-recognition
+cd {service}/docker && ./exec.sh    # Works for zed-ros2-workspace, vlm, tts-stt, face-recognition
 ```
 
 ### Test individual services (run inside respective container)

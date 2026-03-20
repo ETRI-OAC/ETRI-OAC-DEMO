@@ -22,7 +22,7 @@ import cv2
 try:
     import depthai as dai
 except ImportError:
-    raise ImportError("depthai not installed. Run: pip install depthai")
+    raise ImportError("depthai not installed. Run: pip install depthai (가상환경 활성화 또는 Docker 내부에서 실행)")
 
 from person_tracker import PersonTracker
 from head_pose_estimator import estimate_head_orientation, estimate_head_bounding_box

@@ -73,7 +73,31 @@ sudo reboot
 docker run hello-world
 ```
 
-### 1-2. Git LFS 설치 및 파일 받기
+### 1-2. Python 가상환경 만들기 (Ubuntu 24.04 필수)
+
+Ubuntu 24.04는 시스템 Python에 `pip install`을 직접 실행하면 에러가 납니다.
+가상환경을 만들어서 사용합니다. **처음 한 번만 만들면 됩니다.**
+
+```bash
+# 가상환경 생성
+python3 -m venv ~/opr-venv
+
+# 활성화 (터미널을 열 때마다 실행)
+source ~/opr-venv/bin/activate
+
+# 활성화되면 프롬프트 앞에 (opr-venv)가 붙습니다
+# 이후 pip install은 그냥 사용 가능
+pip install <패키지명>
+```
+
+> **팁:** 매번 `source`를 치기 싫다면 `.bashrc`에 추가하세요:
+> ```bash
+> echo 'source ~/opr-venv/bin/activate' >> ~/.bashrc
+> ```
+>
+> **참고:** Docker 컨테이너 내부에서는 가상환경이 필요 없습니다 (Dockerfile에서 자동 처리됨).
+
+### 1-3. Git LFS 설치 및 파일 받기
 
 이 프로젝트의 일부 파일(AI 모델 등)은 용량이 커서 Git LFS로 관리됩니다.
 
@@ -84,7 +108,7 @@ git lfs install
 git lfs pull
 ```
 
-### 1-3. OAK-D Pro W 카메라 설정
+### 1-4. OAK-D Pro W 카메라 설정
 
 카메라를 **USB3 포트(파란색)**에 연결하세요. USB2(검은색)는 대역폭이 부족합니다.
 
@@ -98,7 +122,7 @@ lsusb | grep 03e7
 # 출력 예: Bus 001 Device 005: ID 03e7:2485 Intel Movidius MyriadX
 ```
 
-### 1-4. Hailo-10 설치 (M.2 슬롯 #2)
+### 1-5. Hailo-10 설치 (M.2 슬롯 #2)
 
 Hailo-10을 M.2 슬롯 #2에 장착한 후:
 
@@ -113,7 +137,7 @@ hailortcli fw-control identify
 # 서버 실행 시 Hailo 장치는 자동으로 감지됩니다
 ```
 
-### 1-5. Hailo 모델 (자동 다운로드)
+### 1-6. Hailo 모델 (자동 다운로드)
 
 HEF 모델은 **서버 첫 실행 시 자동으로 다운로드**됩니다. 수동 설치 불필요.
 
@@ -132,7 +156,7 @@ pip install hailo_model_zoo
 > cp yolov8s_pose.hef scrfd_2.5g.hef hailo_models/
 > ```
 
-### 1-6. Ryzen AI SDK 설치 (VLM 사용 시)
+### 1-7. Ryzen AI SDK 설치 (VLM 사용 시)
 
 VLM(비전 언어 모델)을 사용하려면 AMD NPU 드라이버가 필요합니다.
 
@@ -151,9 +175,10 @@ ls /dev/accel/accel*
 pip install onnxruntime-vitisai transformers pillow huggingface_hub
 ```
 
-### 1-7. VLM 모델 다운로드
+### 1-8. VLM 모델 다운로드
 
 ```bash
+# 가상환경이 활성화되어 있어야 합니다 (프롬프트에 (opr-venv) 표시 확인)
 python3 -c "
 from huggingface_hub import snapshot_download
 snapshot_download(
@@ -164,7 +189,7 @@ print('다운로드 완료!')
 "
 ```
 
-### 1-8. NoMachine 설치 (원격 접속 시)
+### 1-9. NoMachine 설치 (원격 접속 시)
 
 로봇 PC에 원격으로 접속하려면:
 
@@ -194,7 +219,12 @@ cd ../..
 
 ### 2-2. VLM 컨테이너 (비전 언어 모델)
 
-VLM은 Docker 없이 호스트에서 직접 실행합니다. 빌드 불필요.
+```bash
+cd vlm/docker
+./compose_up.sh
+# 빌드가 끝나면 Ctrl+C로 종료
+cd ../..
+```
 
 ### 2-3. TTS-STT 컨테이너 (음성 합성/인식)
 
@@ -399,7 +429,7 @@ python _20_vlm_gui.py
 
 | 증상 | 해결 |
 |------|------|
-| `hailo_platform import error` | `pip install hailort` 확인. HailoRT .deb 설치 확인 |
+| `hailo_platform import error` | 가상환경 활성화 후 `pip install hailort` 확인. HailoRT .deb 설치 확인 |
 | `hailortcli`에서 장치 안 보임 | `lspci \| grep Hailo`로 PCIe 인식 확인. M.2 슬롯 #2 재장착 |
 | HEF 로드 실패 | `--hw-arch hailo10h`로 모델 재다운로드 |
 
@@ -437,6 +467,9 @@ cd zed-ros2-workspace && ./run_pantilt.sh   # Pan-Tilt 재시작
 # OAK-ROS2 컨테이너
 cd zed-ros2-workspace/docker && ./exec.sh
 
+# VLM 컨테이너
+cd vlm/docker && ./exec.sh
+
 # TTS-STT 컨테이너
 cd tts-stt/docker && ./exec.sh
 
@@ -463,7 +496,7 @@ cd face-recognition/docker && ./exec.sh
 │  │ LiDAR       │                                              │
 │  │ Pan-Tilt    │  ┌──────────────┐                            │
 │  └──────────────┘  │     VLM      │                           │
-│                    │  (Host직접)   │                           │
+│                    │  Container   │                           │
 │                    │ Gemma-3-4b   │                           │
 │                    │ Ryzen AI NPU │                           │
 │                    │ (8000)       │                           │

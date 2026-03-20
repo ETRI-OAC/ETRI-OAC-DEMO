@@ -116,7 +116,7 @@ download_model('{model_info["zoo_name"]}', hw_arch='{hw_arch}', output_dir='{des
         pass
 
     print(f"[HAILO-DL] Auto-download failed. Please download manually:")
-    print(f"  pip install hailo_model_zoo")
+    print(f"  pip install hailo_model_zoo  (가상환경 활성화 또는 Docker 내부에서 실행)")
     print(f"  hailo model-zoo download --model {model_info['zoo_name']} --hw-arch {hw_arch}")
     print(f"  cp {model_info['filename']} {dest_dir}/")
     return None

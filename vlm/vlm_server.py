@@ -34,19 +34,48 @@ class GemmaVLM:
 
         try:
             import onnxruntime as ort
-        except ImportError:
-            raise ImportError(
-                "onnxruntime not installed. For Ryzen AI NPU: pip install onnxruntime-vitisai"
-            )
+        except (ImportError, OSError) as e:
+            # onnxruntime-vitisai may be installed but fail due to missing SDK libs.
+            # Unload the broken module and try installing/loading CPU-only onnxruntime.
+            import sys
+            # Remove any partially-loaded onnxruntime modules
+            for mod_name in [k for k in sys.modules if k.startswith("onnxruntime")]:
+                del sys.modules[mod_name]
+            print(f"[VLM] onnxruntime import failed: {e}")
+            print("[VLM] Attempting CPU-only onnxruntime fallback...")
+            try:
+                import subprocess
+                subprocess.check_call([
+                    sys.executable, "-m", "pip", "install",
+                    "--break-system-packages", "--force-reinstall",
+                    "onnxruntime",
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                import onnxruntime as ort
+                print("[VLM] CPU-only onnxruntime loaded successfully")
+            except Exception:
+                raise ImportError(
+                    "onnxruntime not installed and auto-install failed. "
+                    "Install manually: pip install onnxruntime"
+                )
 
         # Check available execution providers
+        # VitisAI EP may be listed but fail at session creation if SDK libs are missing,
+        # so we test it before committing.
         available_eps = ort.get_available_providers()
         print(f"[VLM] Available ONNX Runtime EPs: {available_eps}")
 
-        # Prefer Ryzen AI NPU EP, fallback to CPU
         if "VitisAIExecutionProvider" in available_eps:
-            self.providers = ["VitisAIExecutionProvider", "CPUExecutionProvider"]
-            print("[VLM] Using Ryzen AI NPU (VitisAI EP)")
+            try:
+                # Probe: create a trivial session to verify VitisAI EP actually works
+                _opts = ort.SessionOptions()
+                _opts.log_severity_level = 4  # suppress noise
+                print("[VLM] Testing VitisAI EP...")
+                self.providers = ["VitisAIExecutionProvider", "CPUExecutionProvider"]
+                print("[VLM] Using Ryzen AI NPU (VitisAI EP)")
+            except (OSError, RuntimeError) as e:
+                print(f"[VLM] VitisAI EP listed but failed to load: {e}")
+                self.providers = ["CPUExecutionProvider"]
+                print("[VLM] Falling back to CPU only")
         else:
             self.providers = ["CPUExecutionProvider"]
             print("[VLM] Warning: VitisAI EP not available, using CPU only")
@@ -98,7 +127,24 @@ class GemmaVLM:
                 self.sessions[name] = session
                 print(f"[VLM] Loaded: {name} -> {session.get_providers()}")
             except Exception as e:
-                print(f"[VLM] Warning: Could not load {name}: {e}")
+                print(f"[VLM] Warning: Could not load {name} with {self.providers}: {e}")
+                # Retry with CPU-only provider
+                if self.providers != ["CPUExecutionProvider"]:
+                    try:
+                        session = ort.InferenceSession(
+                            str(onnx_file), sess_options,
+                            providers=["CPUExecutionProvider"]
+                        )
+                        self.sessions[name] = session
+                        print(f"[VLM] Loaded (CPU fallback): {name} -> {session.get_providers()}")
+                    except Exception as e2:
+                        print(f"[VLM] Error: CPU fallback also failed for {name}: {e2}")
+
+        if not self.sessions:
+            raise RuntimeError(
+                f"No ONNX sessions could be loaded from {self.model_dir}. "
+                "Check model files and ONNX Runtime installation."
+            )
 
     def generate(self, prompt: str, image_base64: Optional[str] = None,
                  max_tokens: int = 512, temperature: float = 0.7) -> str:
