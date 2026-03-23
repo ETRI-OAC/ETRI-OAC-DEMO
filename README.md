@@ -506,6 +506,50 @@ cd face-recognition/docker && ./exec.sh
 
 ---
 
+## 사용 AI 모델 목록
+
+이 시스템에서 사용하는 모든 AI 모델입니다. Hailo HEF 모델은 서버 첫 실행 시 **자동 다운로드**됩니다.
+
+| 용도 | 모델 | 크기 | 형식 | 실행 장치 | 다운로드 |
+|------|------|------|------|----------|---------|
+| **포즈 추정** | YOLOv8s-pose (COCO-17) | ~12MB | HEF | Hailo-10 [0] | 자동 (`hailo_models/yolov8s_pose.hef`) |
+| **얼굴 검출** | SCRFD 2.5g | ~3MB | HEF | Hailo-10 [0] (공유) | 자동 (`hailo_models/scrfd_2.5g.hef`) |
+| **얼굴 임베딩** | InsightFace ArcFace (buffalo_l) | ~330MB | ONNX | CPU | 자동 (`~/.insightface/`) |
+| **VLM** | Gemma-3-4b-it-mm | ~4GB | ONNX | Ryzen AI NPU | 수동 ([1-8단계](#1-8-vlm-모델-다운로드)) |
+| **음성 인식 (STT)** | Whisper small (faster-whisper) | ~460MB | CTranslate2 | CPU (1개) / Hailo-10 [1] (2개) | 자동 (`~/.cache/whisper/`) |
+| **음성 합성 (TTS)** | Sherpa-ONNX VITS 한국어 (KSS) | ~50MB | ONNX | CPU | Git LFS (`tts-stt/tts_model/`) |
+
+### 하드웨어별 모델 할당
+
+```
+Ryzen AI NPU ─── Gemma-3-4b-it-mm (VLM)
+
+Hailo-10 [0] ─┬─ YOLOv8s-pose (매 프레임, 상시)
+              └─ SCRFD 2.5g (얼굴 감지 시에만, 간헐)
+
+Hailo-10 [1] ─── Whisper encoder (2개일 때만, 없으면 CPU)
+
+CPU ─────────┬─ InsightFace ArcFace (얼굴 임베딩)
+             ├─ Sherpa-ONNX VITS (TTS)
+             ├─ Whisper decoder (STT, Hailo 사용 시)
+             └─ faster-whisper (STT, Hailo 없을 때)
+```
+
+### 모델 다운로드 위치 요약
+
+| 모델 | 저장 경로 | 비고 |
+|------|----------|------|
+| YOLOv8s-pose HEF | `hailo_models/yolov8s_pose.hef` | 첫 실행 시 자동 |
+| SCRFD 2.5g HEF | `hailo_models/scrfd_2.5g.hef` | 첫 실행 시 자동 |
+| Gemma-3-4b-it-mm | `vlm/models/Gemma-3-4b-it-mm-onnx-ryzenai-npu/` | 수동, ~4GB |
+| Whisper | `~/.cache/whisper/` (호스트) | 첫 실행 시 자동, ~460MB |
+| InsightFace buffalo_l | `~/.insightface/` (컨테이너 내) | 첫 실행 시 자동, ~330MB |
+| 한국어 TTS VITS | `tts-stt/tts_model/sherpa-onnx-korean-tts/` | Git LFS |
+
+> **오프라인 환경:** 인터넷이 없는 곳에서 실행하려면 위 경로에 모델을 미리 복사해 두세요.
+
+---
+
 ## 각 컨테이너 상세 문서
 
 | 컨테이너 | 문서 |
