@@ -21,14 +21,11 @@ RUN pip3 install --break-system-packages \
     sentencepiece \
     protobuf
 
-# ONNX Runtime — always install CPU build, then try NPU build on top
-# onnxruntime-vitisai replaces onnxruntime when installed successfully.
-# If it fails (SDK not available at build time), the CPU build remains.
+# ONNX Runtime — CPU build at image build time.
+# onnxruntime-vitisai is NOT on PyPI; it is installed at container startup
+# from the AMD Ryzen AI SDK wheel in /opt/ryzenai (mounted from host).
 RUN pip3 install --break-system-packages onnxruntime \
     && echo "[VLM] ONNX Runtime (CPU) installed"
-RUN pip3 install --break-system-packages onnxruntime-vitisai 2>/dev/null \
-    && echo "[VLM] ONNX Runtime (VitisAI/NPU) installed" \
-    || echo "[VLM] onnxruntime-vitisai not available, CPU only"
 
 WORKDIR /root/workspace
 

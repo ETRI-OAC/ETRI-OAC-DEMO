@@ -7,6 +7,8 @@ services:
     image: vlm-ryzenai:latest
     volumes:
       - "../../:/root/workspace"
+      - "/opt/ryzenai:/opt/ryzenai:ro"
+      - "/lib/firmware/amdnpu:/lib/firmware/amdnpu:ro"
     privileged: true
     network_mode: host
     ipc: "host"
@@ -14,4 +16,8 @@ services:
       python3 /root/workspace/vlm/vlm_server.py
       --model-dir /root/workspace/vlm/models/Gemma-3-4b-it-mm-onnx-ryzenai-npu
       --port 8000
+    environment:
+      - TRANSFORMERS_OFFLINE=1
+      - HF_DATASETS_OFFLINE=1
+      - XLNX_VART_FIRMWARE=/opt/ryzenai/share/xdna/vaip_config.json
     restart: unless-stopped

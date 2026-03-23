@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="${SCRIPT_DIR}/docker"
 CONTAINER_NAME="base-tts-stt-1"
 DOCKER_COMPOSE_FILE="docker-compose.yml"
-COMMAND="cd /root/workspace/tts-stt && python stt_server.py --backend auto"
+COMMAND="cd /root/workspace/tts-stt && python3 stt_server.py --backend auto"
 
 # Must run compose from docker dir so volume ../../ resolves to project root
 cd "$DOCKER_DIR"

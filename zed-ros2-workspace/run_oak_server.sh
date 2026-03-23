@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="${SCRIPT_DIR}/docker"
 CONTAINER_NAME="base-zed_ros2_env-1"
 DOCKER_COMPOSE_FILE="docker-compose.yml"
-COMMAND="cd /root/workspace/zed-ros2-workspace/oak_wrapper && python oak_server.py --debug"
+COMMAND="cd /root/workspace/zed-ros2-workspace/oak_wrapper && python3 oak_server.py --debug"
 
 # Must run compose from docker dir so volume ../../ resolves to project root
 cd "$DOCKER_DIR"

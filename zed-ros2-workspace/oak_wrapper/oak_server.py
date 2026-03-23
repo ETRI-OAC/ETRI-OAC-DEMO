@@ -26,7 +26,7 @@ except ImportError:
 
 from person_tracker import PersonTracker
 from head_pose_estimator import estimate_head_orientation, estimate_head_bounding_box
-from hailo_utils import detect_hailo_device
+from hailo_utils import detect_hailo_device, is_hailo_available
 from hailo_model_downloader import get_hef_path
 
 # ---------------------------------------------------------------------------
@@ -72,185 +72,206 @@ def allocate_size(width: int, height: int, channels: int, bytes_per_channel: int
 
 
 # ---------------------------------------------------------------------------
-# Hailo-10 pose estimator
+# Hailo-10 pose estimator  (HailoRT 5.x InferModel API)
 # ---------------------------------------------------------------------------
 class HailoPoseEstimator:
-    """YOLOv8s-pose inference on Hailo-10 via HailoRT."""
+    """YOLOv8m-pose inference on Hailo-10H via HailoRT 5.x InferModel API.
 
-    def __init__(self, hef_path: str, input_size: int = 640, score_threshold: float = 0.3,
+    Output tensors (9 total, no built-in NMS):
+      stride 8  (80×80): conv59 bbox[64], conv60 cls[1], conv61 kpt[51]
+      stride 16 (40×40): conv75 bbox[64], conv76 cls[1], conv77 kpt[51]
+      stride 32 (20×20): conv90 bbox[64], conv91 cls[1], conv92 kpt[51]
+    """
+
+    _REG_MAX = 16      # DFL bins
+    _NUM_KPT = 17      # COCO keypoints
+
+    # (bbox_name, cls_name, kpt_name) per stride
+    _SCALE_OUTPUTS = {
+        8:  ("yolov8m_pose/conv59", "yolov8m_pose/conv60", "yolov8m_pose/conv61"),
+        16: ("yolov8m_pose/conv75", "yolov8m_pose/conv76", "yolov8m_pose/conv77"),
+        32: ("yolov8m_pose/conv90", "yolov8m_pose/conv91", "yolov8m_pose/conv92"),
+    }
+
+    def __init__(self, hef_path: str, input_size: int = 640,
+                 score_threshold: float = 0.3, nms_iou: float = 0.45,
                  device_id: Optional[str] = None):
         self.input_size = input_size
         self.score_threshold = score_threshold
+        self.nms_iou = nms_iou
 
         try:
-            from hailo_platform import (
-                HEF, VDevice, HailoStreamInterface,
-                InferVStreams, ConfigureParams, InputVStreamParams, OutputVStreamParams,
-                FormatType,
-            )
+            from hailo_platform import VDevice, FormatType
         except ImportError:
             raise ImportError(
                 "hailo_platform not installed. Install HailoRT: "
                 "https://hailo.ai/developer-zone/"
             )
 
-        self._hailo = __import__("hailo_platform")
-
         if not os.path.exists(hef_path):
             raise FileNotFoundError(f"Hailo HEF model not found: {hef_path}")
 
-        self.hef = HEF(hef_path)
-
-        # Select specific Hailo device by ID (e.g. "0000:01:00.0")
-        # When None, uses first available device
         if device_id:
             params = VDevice.create_params()
             params.device_ids = [device_id]
-            self.target = VDevice(params)
+            self._vdevice = VDevice(params)
             print(f"[HAILO] Using device: {device_id}")
         else:
-            self.target = VDevice()
+            self._vdevice = VDevice()
 
-        configure_params = ConfigureParams.create_from_hef(
-            self.hef, interface=HailoStreamInterface.PCIe
-        )
-        self.network_group = self.target.configure(self.hef, configure_params)[0]
+        self._infer_model = self._vdevice.create_infer_model(hef_path)
+        self._infer_model.set_batch_size(1)
 
-        self.input_vstream_info = self.hef.get_input_vstream_infos()
-        self.output_vstream_info = self.hef.get_output_vstream_infos()
+        # Request float32 outputs (auto-dequantized from UINT8/UINT16)
+        for out in self._infer_model.outputs:
+            self._infer_model.output(out.name).set_format_type(FormatType.FLOAT32)
 
-        self.input_params = InputVStreamParams.make_from_network_group(
-            self.network_group, quantized=False, format_type=FormatType.FLOAT32
-        )
-        self.output_params = OutputVStreamParams.make_from_network_group(
-            self.network_group, quantized=False, format_type=FormatType.FLOAT32
-        )
+        # Keep configured context open for the lifetime of this object
+        self._ctx = self._infer_model.configure()
+        self._configured = self._ctx.__enter__()
 
         print(f"[HAILO] Loaded model: {hef_path}")
-        print(f"[HAILO] Input: {self.input_vstream_info[0].shape}, "
-              f"Output: {[o.shape for o in self.output_vstream_info]}")
 
+    def __del__(self):
+        try:
+            self._ctx.__exit__(None, None, None)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
     def infer(self, bgr_frame: np.ndarray) -> List[dict]:
-        """Run pose estimation on a BGR frame.
-
-        Args:
-            bgr_frame: (H, W, 3) uint8 BGR image.
-
-        Returns:
-            List of detection dicts with 'keypoints_2d', 'bbox', 'score'.
-        """
-        from hailo_platform import InferVStreams
-
+        """Run pose estimation. Returns list of {bbox, score, keypoints_2d}."""
         orig_h, orig_w = bgr_frame.shape[:2]
+        tensor, scale, pad_x, pad_y = self._preprocess(bgr_frame)
 
-        # Preprocess: resize + pad (letterbox) to input_size × input_size
-        input_tensor, scale, pad_x, pad_y = self._preprocess(bgr_frame)
+        bindings = self._configured.create_bindings()
+        input_name = self._infer_model.inputs[0].name
+        bindings.input(input_name).set_buffer(tensor)
 
-        # Run inference
-        with InferVStreams(
-            self.network_group, self.input_params, self.output_params
-        ) as pipeline:
-            input_dict = {self.input_vstream_info[0].name: input_tensor}
-            output = pipeline.infer(input_dict)
+        out_bufs: dict = {}
+        for out in self._infer_model.outputs:
+            buf = np.empty(tuple(out.shape), dtype=np.float32)
+            bindings.output(out.name).set_buffer(buf)
+            out_bufs[out.name] = buf
 
-        # Post-process: decode YOLOv8-pose output
-        detections = self._postprocess(output, orig_w, orig_h, scale, pad_x, pad_y)
-        return detections
+        self._configured.run([bindings], 5000)
 
+        outputs = {name: bindings.output(name).get_buffer() for name in out_bufs}
+
+        all_dets: List[dict] = []
+        for stride, (bn, cn, kn) in self._SCALE_OUTPUTS.items():
+            all_dets.extend(
+                self._decode_scale(outputs[bn], outputs[cn], outputs[kn],
+                                   stride, orig_w, orig_h, scale, pad_x, pad_y)
+            )
+        return self._nms(all_dets)
+
+    # ------------------------------------------------------------------
+    # Pre / post processing
+    # ------------------------------------------------------------------
     def _preprocess(self, bgr_frame: np.ndarray):
-        """Letterbox resize to input_size × input_size, return (tensor, scale, pad_x, pad_y)."""
         h, w = bgr_frame.shape[:2]
         scale = min(self.input_size / w, self.input_size / h)
         new_w, new_h = int(w * scale), int(h * scale)
         pad_x = (self.input_size - new_w) // 2
         pad_y = (self.input_size - new_h) // 2
 
-        resized = cv2.resize(bgr_frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+        rgb = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
+        resized = cv2.resize(rgb, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
         canvas = np.full((self.input_size, self.input_size, 3), 114, dtype=np.uint8)
         canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = resized
+        # NHWC uint8 — HailoRT quantizes internally
+        return canvas, scale, pad_x, pad_y
 
-        # Normalize to [0, 1] float32, NHWC
-        tensor = canvas.astype(np.float32) / 255.0
-        tensor = np.expand_dims(tensor, axis=0)  # (1, H, W, 3)
-        return tensor, scale, pad_x, pad_y
+    def _dfl(self, pred: np.ndarray) -> np.ndarray:
+        """Distribution Focal Loss decode: [N, 64] → [N, 4] distances."""
+        n = pred.shape[0]
+        p = pred.reshape(n, 4, self._REG_MAX).astype(np.float32)
+        p -= p.max(axis=2, keepdims=True)
+        exp = np.exp(p)
+        soft = exp / (exp.sum(axis=2, keepdims=True) + 1e-9)
+        w = np.arange(self._REG_MAX, dtype=np.float32)
+        return (soft * w).sum(axis=2)  # [N, 4]
 
-    def _postprocess(
-        self, output: dict, orig_w: int, orig_h: int,
-        scale: float, pad_x: int, pad_y: int,
-    ) -> List[dict]:
-        """Decode YOLOv8-pose output tensors into detection dicts.
+    def _decode_scale(self, bbox_raw, cls_raw, kpt_raw, stride,
+                      orig_w, orig_h, scale, pad_x, pad_y) -> List[dict]:
+        h, w = bbox_raw.shape[:2]
+        n = h * w
 
-        YOLOv8-pose output format (after NMS):
-        Each detection: [x_center, y_center, w, h, confidence,
-                         kp0_x, kp0_y, kp0_conf, kp1_x, kp1_y, kp1_conf, ...]
-        17 keypoints × 3 = 51 values + 5 bbox values = 56 per detection.
-        """
-        # Get the output tensor (exact shape depends on HEF compilation)
-        out_name = self.output_vstream_info[0].name
-        raw = output[out_name]
-        if isinstance(raw, list):
-            raw = raw[0]
-        raw = np.squeeze(raw)  # Remove batch dim if present
-
-        # Handle different output layouts
-        if raw.ndim == 1:
-            # Flat output — reshape assuming 56 values per detection
-            num_det = len(raw) // 56
-            if num_det == 0:
-                return []
-            raw = raw[:num_det * 56].reshape(num_det, 56)
-        elif raw.ndim == 2:
-            if raw.shape[1] == 56:
-                pass  # Already (N, 56)
-            elif raw.shape[0] == 56:
-                raw = raw.T  # Transpose (56, N) → (N, 56)
-            else:
-                return []
-        else:
+        # Hailo HEF already applies sigmoid to cls outputs (FormatType.FLOAT32
+        # dequantizes to probabilities, NOT raw logits). Using sigmoid again would
+        # convert near-zero values to ~0.5 and flood detections.
+        scores = cls_raw.reshape(n).astype(np.float32)
+        mask = scores > self.score_threshold
+        if not mask.any():
             return []
 
-        detections = []
-        for det in raw:
-            conf = det[4]
-            if conf < self.score_threshold:
-                continue
+        # Anchor grid centers in feature-map coords
+        ys = np.arange(h, dtype=np.float32) + 0.5
+        xs = np.arange(w, dtype=np.float32) + 0.5
+        gx, gy = np.meshgrid(xs, ys)
+        anchors = np.stack([gx.ravel(), gy.ravel()], axis=1)  # [H*W, 2]
 
-            # Bbox in letterbox coordinates
-            cx, cy, bw, bh = det[0], det[1], det[2], det[3]
-            x1_lb = cx - bw / 2
-            y1_lb = cy - bh / 2
-            x2_lb = cx + bw / 2
-            y2_lb = cy + bh / 2
+        scores  = scores[mask]
+        bbox_f  = bbox_raw.reshape(n, 64)[mask].astype(np.float32)
+        kpt_f   = kpt_raw.reshape(n, 51)[mask].astype(np.float32)
+        anc     = anchors[mask]
 
-            # Reverse letterbox → original coordinates
-            x1 = (x1_lb - pad_x) / scale
-            y1 = (y1_lb - pad_y) / scale
-            x2 = (x2_lb - pad_x) / scale
-            y2 = (y2_lb - pad_y) / scale
+        # DFL → [N, 4]: (left, top, right, bottom) in feature-map units → pixel
+        dist = self._dfl(bbox_f)
+        x1 = (anc[:, 0] - dist[:, 0]) * stride
+        y1 = (anc[:, 1] - dist[:, 1]) * stride
+        x2 = (anc[:, 0] + dist[:, 2]) * stride
+        y2 = (anc[:, 1] + dist[:, 3]) * stride
 
-            # Keypoints (17 × 3: x, y, conf in letterbox coords)
-            keypoints_2d = []
-            for kp_idx in range(17):
-                kx_lb = det[5 + kp_idx * 3 + 0]
-                ky_lb = det[5 + kp_idx * 3 + 1]
-                ks = det[5 + kp_idx * 3 + 2]
-                if ks > 0.3:
-                    kx = (kx_lb - pad_x) / scale
-                    ky = (ky_lb - pad_y) / scale
-                    keypoints_2d.append([kx, ky])
-                else:
-                    keypoints_2d.append([0.0, 0.0])
+        # Keypoints: (kx*2 + anchor - 0.5) * stride  (YOLOv8 pose convention)
+        kpts = kpt_f.reshape(-1, self._NUM_KPT, 3)
+        kx = (kpts[:, :, 0] * 2.0 + anc[:, 0:1] - 0.5) * stride
+        ky = (kpts[:, :, 1] * 2.0 + anc[:, 1:2] - 0.5) * stride
+        kv = kpts[:, :, 2]  # already probability (sigmoid applied in HEF)
 
+        # Reverse letterbox → original image coords
+        x1 = (x1 - pad_x) / scale;  x2 = (x2 - pad_x) / scale
+        y1 = (y1 - pad_y) / scale;  y2 = (y2 - pad_y) / scale
+        kx = (kx - pad_x) / scale;  ky = (ky - pad_y) / scale
+
+        detections: List[dict] = []
+        for i in range(len(scores)):
+            kpts_2d = [
+                [float(kx[i, j]), float(ky[i, j])] if kv[i, j] > 0.3 else [0.0, 0.0]
+                for j in range(self._NUM_KPT)
+            ]
             detections.append({
-                "keypoints_2d": keypoints_2d,
                 "bbox": [
-                    max(0, x1), max(0, y1),
-                    min(orig_w, x2), min(orig_h, y2),
+                    max(0.0, float(x1[i])), max(0.0, float(y1[i])),
+                    min(float(orig_w), float(x2[i])), min(float(orig_h), float(y2[i])),
                 ],
-                "score": float(conf),
+                "score": float(scores[i]),
+                "keypoints_2d": kpts_2d,
             })
-
         return detections
+
+    def _nms(self, dets: List[dict]) -> List[dict]:
+        if not dets:
+            return []
+        boxes  = np.array([d["bbox"] for d in dets], dtype=np.float32)
+        scores = np.array([d["score"] for d in dets], dtype=np.float32)
+        x1, y1, x2, y2 = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
+        areas  = np.maximum(0, x2 - x1) * np.maximum(0, y2 - y1)
+        order  = scores.argsort()[::-1]
+        keep   = []
+        while order.size > 0:
+            i = order[0]; keep.append(i)
+            ix1 = np.maximum(x1[i], x1[order[1:]])
+            iy1 = np.maximum(y1[i], y1[order[1:]])
+            ix2 = np.minimum(x2[i], x2[order[1:]])
+            iy2 = np.minimum(y2[i], y2[order[1:]])
+            inter = np.maximum(0, ix2 - ix1) * np.maximum(0, iy2 - iy1)
+            iou   = inter / (areas[i] + areas[order[1:]] - inter + 1e-9)
+            order = order[np.where(iou <= self.nms_iou)[0] + 1]
+        return [dets[i] for i in keep]
 
 
 # ---------------------------------------------------------------------------
@@ -288,61 +309,47 @@ class OakImageServer:
         self.pose_estimator: Optional[HailoPoseEstimator] = None
         if hef_path is None:
             # Auto-download YOLOv8s-pose HEF
-            hef_path = get_hef_path("yolov8s_pose")
+            hef_path = get_hef_path("yolov8m_pose")
         if hef_path:
-            if hailo_device_id is None:
-                hailo_device_id = detect_hailo_device(device_index=hailo_device_index)
-            if hailo_device_id is not None or hailo_device_index == 0:
+            if is_hailo_available():
+                if hailo_device_id is None:
+                    hailo_device_id = detect_hailo_device(device_index=hailo_device_index)
                 self.pose_estimator = HailoPoseEstimator(hef_path, device_id=hailo_device_id)
+            else:
+                print("[OAK] No Hailo device — pose estimation disabled")
 
         # FPS tracking
         self._last_fps_time: Optional[float] = None
         self._frame_count_for_fps = 0
 
     # ------------------------------------------------------------------
-    # OAK-D pipeline (camera only — no NN)
+    # OAK-D pipeline (DepthAI v3 API — no XLinkOut)
     # ------------------------------------------------------------------
-    def _build_pipeline(self) -> dai.Pipeline:
+    def _build_pipeline(self):
+        """Build pipeline. Returns (pipeline, rgb_queue, depth_queue)."""
         pipeline = dai.Pipeline()
 
-        # --- Color camera ---
-        cam_rgb = pipeline.create(dai.node.ColorCamera)
-        cam_rgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
-        cam_rgb.setFps(30)
-        cam_rgb.setInterleaved(False)
-        cam_rgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
-        cam_rgb.setBoardSocket(dai.CameraBoardSocket.CAM_A)
-        cam_rgb.setIspScale(1, 1)
+        # --- RGB camera (CAM_A) ---
+        cam_rgb = pipeline.create(dai.node.Camera, dai.CameraBoardSocket.CAM_A)
+        cam_rgb.build()
+        rgb_out = cam_rgb.requestOutput((1920, 1080), dai.ImgFrame.Type.BGR888p)
 
-        xout_rgb = pipeline.create(dai.node.XLinkOut)
-        xout_rgb.setStreamName("rgb")
-        cam_rgb.isp.link(xout_rgb.input)
-
-        # --- Stereo depth (aligned to RGB) ---
-        mono_left = pipeline.create(dai.node.MonoCamera)
-        mono_left.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
-        mono_left.setFps(30)
-        mono_left.setBoardSocket(dai.CameraBoardSocket.CAM_B)
-
-        mono_right = pipeline.create(dai.node.MonoCamera)
-        mono_right.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
-        mono_right.setFps(30)
-        mono_right.setBoardSocket(dai.CameraBoardSocket.CAM_C)
-
+        # --- Stereo depth with auto-created mono cameras (CAM_B + CAM_C) ---
+        # Using autoCreateCameras=True avoids "board socket already used" errors
+        # that occur when we create Camera nodes for CAM_B/CAM_C AND stereo also
+        # tries to register those sockets internally.
+        # NOTE: Do NOT call setDepthAlign(CAM_A) — the OAK-D Pro W RGB ISP native
+        # width is 2024 (not a multiple of 16 relative to depth), which causes a
+        # pipeline crash. Depth is used only to sample a small patch near keypoints,
+        # so mono-resolution unaligned depth is sufficient.
         stereo = pipeline.create(dai.node.StereoDepth)
-        stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
-        stereo.setDepthAlign(dai.CameraBoardSocket.CAM_A)
-        stereo.setOutputSize(cam_rgb.getIspWidth(), cam_rgb.getIspHeight())
-        stereo.setSubpixel(True)
+        stereo.build(autoCreateCameras=True, presetMode=dai.node.StereoDepth.PresetMode.HIGH_DETAIL)
 
-        mono_left.out.link(stereo.left)
-        mono_right.out.link(stereo.right)
+        # --- Output queues (must be created before pipeline.start()) ---
+        rgb_q   = rgb_out.createOutputQueue()
+        depth_q = stereo.depth.createOutputQueue()
 
-        xout_depth = pipeline.create(dai.node.XLinkOut)
-        xout_depth.setStreamName("depth")
-        stereo.depth.link(xout_depth.input)
-
-        return pipeline
+        return pipeline, rgb_q, depth_q
 
     def _populate_intrinsics(self, device: dai.Device, width: int, height: int) -> None:
         if self.fx > 0:
@@ -537,11 +544,17 @@ class OakImageServer:
             kp_2d_34 = list(coco_kps) + [[0.0, 0.0]] * (MAX_KEYPOINTS - len(coco_kps))
 
             # head_position from nose + depth
+            # Depth frame is in mono resolution (640×400); RGB is 1920×1080.
+            # Scale nose coords from RGB space to depth space for lookup.
             nose = coco_kps[COCO_NOSE]
             head_position = [0.0, 0.0, 0.0]
             if depth_frame is not None and nose[0] > 0 and nose[1] > 0:
-                nx = min(max(int(nose[0]), 0), depth_frame.shape[1] - 1)
-                ny = min(max(int(nose[1]), 0), depth_frame.shape[0] - 1)
+                rgb_h, rgb_w = self.frame_shape[:2]
+                d_h, d_w = depth_frame.shape[:2]
+                raw_nx = int(nose[0] * d_w / rgb_w)
+                raw_ny = int(nose[1] * d_h / rgb_h)
+                nx = min(max(raw_nx, 0), d_w - 1)
+                ny = min(max(raw_ny, 0), d_h - 1)
                 y_lo, y_hi = max(0, ny - 2), min(depth_frame.shape[0], ny + 3)
                 x_lo, x_hi = max(0, nx - 2), min(depth_frame.shape[1], nx + 3)
                 patch = depth_frame[y_lo:y_hi, x_lo:x_hi]
@@ -569,74 +582,74 @@ class OakImageServer:
     # Main loop
     # ------------------------------------------------------------------
     def run(self) -> None:
-        pipeline = self._build_pipeline()
+        pipeline, q_rgb, q_depth = self._build_pipeline()
+        pipeline.start()
 
-        with dai.Device(pipeline) as device:
-            q_rgb = device.getOutputQueue(name="rgb", maxSize=4, blocking=False)
-            q_depth = device.getOutputQueue(name="depth", maxSize=4, blocking=False)
+        device = pipeline.getDefaultDevice()
 
-            # Wait for first frame
-            print("[OAK] Waiting for first frame...")
-            first_rgb = q_rgb.get()
-            frame = first_rgb.getCvFrame()
-            h, w = frame.shape[:2]
-            print(f"[OAK] Image size: {w}x{h}x3")
+        # Wait for first frame
+        print("[OAK] Waiting for first frame...")
+        first_rgb = q_rgb.get()
+        frame = first_rgb.getCvFrame()
+        h, w = frame.shape[:2]
+        print(f"[OAK] Image size: {w}x{h}x3")
 
-            self._populate_intrinsics(device, w, h)
-            self._init_image_shared_memory(w, h, 3)
-            self._init_body_shared_memory()
-            self._write_image_data(frame)
+        self._populate_intrinsics(device, w, h)
+        self._init_image_shared_memory(w, h, 3)
+        self._init_body_shared_memory()
+        self._write_image_data(frame)
 
-            if self.pose_estimator:
-                print("[SERVER] Pose estimation: Hailo-10")
-            else:
-                print("[SERVER] Pose estimation: disabled (camera only mode)")
+        if self.pose_estimator:
+            print("[SERVER] Pose estimation: Hailo-10")
+        else:
+            print("[SERVER] Pose estimation: disabled (camera only mode)")
 
-            print(f"[SERVER] Publishing to '{self.shm_image_name}' + '{self.shm_body_name}'")
-            print("[SERVER] Ctrl+C to stop.")
+        print(f"[SERVER] Publishing to '{self.shm_image_name}' + '{self.shm_body_name}'")
+        print("[SERVER] Ctrl+C to stop.")
 
-            try:
-                while True:
-                    in_rgb = q_rgb.tryGet()
-                    if in_rgb is None:
-                        time.sleep(0.001)
-                        continue
+        try:
+            while True:
+                in_rgb = q_rgb.tryGet()
+                if in_rgb is None:
+                    time.sleep(0.001)
+                    continue
 
-                    frame = in_rgb.getCvFrame()
-                    self._write_image_data(frame)
+                frame = in_rgb.getCvFrame()
+                self._write_image_data(frame)
 
-                    # Depth
-                    depth_frame = None
-                    in_depth = q_depth.tryGet()
-                    if in_depth is not None:
-                        depth_frame = in_depth.getFrame()
+                # Depth
+                depth_frame = None
+                in_depth = q_depth.tryGet()
+                if in_depth is not None:
+                    depth_frame = in_depth.getFrame()
 
-                    # Pose estimation on Hailo-10
-                    bodies = []
-                    if self.pose_estimator is not None:
-                        raw_dets = self.pose_estimator.infer(frame)
-                        bodies = self._process_detections(raw_dets, depth_frame)
+                # Pose estimation on Hailo-10
+                bodies = []
+                if self.pose_estimator is not None:
+                    raw_dets = self.pose_estimator.infer(frame)
+                    bodies = self._process_detections(raw_dets, depth_frame)
 
-                    self._write_body_data(bodies)
+                self._write_body_data(bodies)
 
-                    # FPS
-                    if self.debug:
-                        if self._last_fps_time is None:
-                            self._last_fps_time = time.time()
-                            self._frame_count_for_fps = 0
-                        self._frame_count_for_fps += 1
-                        now = time.time()
-                        elapsed = now - self._last_fps_time
-                        if elapsed >= 1.0:
-                            fps = self._frame_count_for_fps / elapsed
-                            print(f"[DEBUG] {len(bodies)} person(s), FPS: {fps:.2f}")
-                            self._last_fps_time = now
-                            self._frame_count_for_fps = 0
+                # FPS
+                if self.debug:
+                    if self._last_fps_time is None:
+                        self._last_fps_time = time.time()
+                        self._frame_count_for_fps = 0
+                    self._frame_count_for_fps += 1
+                    now = time.time()
+                    elapsed = now - self._last_fps_time
+                    if elapsed >= 1.0:
+                        fps = self._frame_count_for_fps / elapsed
+                        print(f"[DEBUG] {len(bodies)} person(s), FPS: {fps:.2f}")
+                        self._last_fps_time = now
+                        self._frame_count_for_fps = 0
 
-            except KeyboardInterrupt:
-                print("\n[SERVER] Stopping...")
-            finally:
-                self.close()
+        except KeyboardInterrupt:
+            print("\n[SERVER] Stopping...")
+        finally:
+            pipeline.stop()
+            self.close()
 
     def close(self) -> None:
         print("[OAK] Closing camera.")

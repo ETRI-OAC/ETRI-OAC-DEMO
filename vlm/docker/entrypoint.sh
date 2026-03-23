@@ -43,6 +43,38 @@ if [ -d "/home" ]; then
     git config --global --add safe.directory /home || true
 fi
 
+# Install AMD Ryzen AI NPU packages from host-mounted /opt/ryzenai/wheels/
+# (not on PyPI — wheels must be placed on host at /opt/ryzenai/wheels/)
+WHEEL_DIR="/opt/ryzenai/wheels"
+if python3 -c "from onnxruntime import get_available_providers; assert 'VitisAIExecutionProvider' in get_available_providers()" 2>/dev/null; then
+    echo "[VLM] VitisAI EP already installed — NPU enabled"
+elif [ -d "$WHEEL_DIR" ] && ls "$WHEEL_DIR"/onnxruntime_vitisai*.whl 2>/dev/null | grep -q .; then
+    echo "[VLM] Installing AMD Ryzen AI wheels from $WHEEL_DIR ..."
+    # Install in dependency order
+    for PKG in \
+        "voe-*.whl" \
+        "vitis_aie_essentials-*.whl" \
+        "device_essentials_strx-*.whl" \
+        "ryzenai_dynamic_dispatch-*.whl" \
+        "onnxruntime_vitisai-*.whl"
+    do
+        WHL=$(ls "$WHEEL_DIR"/$PKG 2>/dev/null | head -1)
+        if [ -n "$WHL" ]; then
+            echo "[VLM]   Installing $(basename $WHL) ..."
+            pip3 install --break-system-packages --quiet "$WHL" \
+                || echo "[VLM]   WARNING: failed to install $(basename $WHL)"
+        else
+            echo "[VLM]   WARNING: $PKG not found in $WHEEL_DIR"
+        fi
+    done
+    python3 -c "from onnxruntime import get_available_providers; assert 'VitisAIExecutionProvider' in get_available_providers()" 2>/dev/null \
+        && echo "[VLM] VitisAI EP installed — NPU enabled" \
+        || echo "[VLM] VitisAI EP not available after install — CPU only"
+else
+    echo "[VLM] $WHEEL_DIR not found — CPU only"
+    echo "[VLM] To enable NPU: sudo mkdir -p $WHEEL_DIR && sudo cp <wheels> $WHEEL_DIR/"
+fi
+
 echo "VLM container is ready!"
 
 # Execute the CMD from docker-compose (vlm_server.py) or fallback to bash

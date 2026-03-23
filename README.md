@@ -127,34 +127,47 @@ lsusb | grep 03e7
 Hailo-10을 M.2 슬롯 #2에 장착한 후:
 
 ```bash
-# HailoRT 설치 (https://hailo.ai/developer-zone/ 에서 .deb 다운로드)
-sudo dpkg -i hailort_*.deb
-pip install hailort
+# HailoRT .deb 다운로드: https://hailo.ai/developer-zone/
+# (버전 5.2.0 기준)
+
+# PCIe 드라이버 postinst 스크립트 충돌 방지를 위해 --unpack 사용
+sudo dpkg --unpack hailort_*.deb
+sudo ldconfig
+
+# Python 바인딩: hailort는 PyPI에 없으므로 wheel 파일 별도 필요
+# developer-zone에서 Python wheel(.whl) 다운로드 후:
+pip install hailort-*.whl
 
 # 장치 인식 확인
 hailortcli fw-control identify
-# Device ID가 출력되어야 합니다 (예: 0000:02:00.0)
+# Device ID + 펌웨어 버전이 출력되어야 합니다 (예: 0000:e5:00.0, firmware 5.2.0)
 # 서버 실행 시 Hailo 장치는 자동으로 감지됩니다
 ```
 
+> **주의:** `sudo dpkg -i`(전체 설치) 대신 `sudo dpkg --unpack`을 사용하는 이유:
+> HailoRT .deb의 postinst 스크립트가 PCIe 드라이버 모듈 빌드를 시도하는데,
+> 커널 헤더 환경에 따라 실패할 수 있습니다. `--unpack`은 파일만 배치하고 스크립트는 건너뜁니다.
+> 커널 드라이버는 이미 `hailo1x_pci` 모듈로 로드되어 있다면 별도 빌드 불필요합니다.
+
 ### 1-6. Hailo 모델 (자동 다운로드)
 
-HEF 모델은 **서버 첫 실행 시 자동으로 다운로드**됩니다. 수동 설치 불필요.
-
-자동 다운로드를 위해 `hailo_model_zoo`만 설치해 두세요:
-
-```bash
-pip install hailo_model_zoo
-```
+HEF 모델은 **서버 첫 실행 시 S3에서 자동으로 다운로드**됩니다. `hailo_model_zoo` CLI 설치 불필요.
 
 > 자동 다운로드된 모델은 `hailo_models/` 폴더에 저장됩니다.
-> 인터넷 없는 환경에서는 미리 다운로드 후 복사:
-> ```bash
-> hailo model-zoo download --model yolov8s_pose --hw-arch hailo10h
-> hailo model-zoo download --model scrfd_2.5g --hw-arch hailo10h
-> mkdir -p hailo_models/
-> cp yolov8s_pose.hef scrfd_2.5g.hef hailo_models/
-> ```
+
+인터넷 없는 환경에서는 미리 직접 다운로드:
+
+```bash
+mkdir -p hailo_models/
+
+# YOLOv8m-pose (28MB) — 포즈 추정
+wget -O hailo_models/yolov8m_pose.hef \
+  "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v5.2.0/hailo10h/yolov8m_pose.hef"
+
+# SCRFD 10g (4.5MB) — 얼굴 검출
+wget -O hailo_models/scrfd_10g.hef \
+  "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v5.2.0/hailo10h/scrfd_10g.hef"
+```
 
 ### 1-7. Ryzen AI SDK 설치 (VLM 사용 시)
 
@@ -191,6 +204,10 @@ print('다운로드 완료!')
 "
 ```
 
+> **오프라인 환경:** 모델은 `vlm/models/Gemma-3-4b-it-mm-onnx-ryzenai-npu/`에 저장됩니다.
+> Docker 컨테이너는 `TRANSFORMERS_OFFLINE=1` 환경변수가 설정되어 있어 **모델과 컨테이너 이미지만 있으면 네트워크 없이 실행**됩니다.
+> 모델 다운로드와 컨테이너 빌드는 온라인에서 한 번만 하면 됩니다.
+
 ### 1-9. NoMachine 설치 (원격 접속 시)
 
 로봇 PC에 원격으로 접속하려면:
@@ -210,14 +227,18 @@ print('다운로드 완료!')
 ### 2-1. OAK-ROS2 컨테이너 (카메라 + 로봇 제어)
 
 ```bash
-# HailoRT .deb 파일을 빌드 폴더에 복사 (선택 — 없어도 빌드 가능)
-cp hailort_*.deb zed-ros2-workspace/docker/
+# HailoRT 파일을 빌드 폴더에 복사 (선택 — 없어도 빌드 가능, Hailo 비활성화 상태로 실행)
+cp hailort_*.deb zed-ros2-workspace/docker/        # 드라이버 .deb
+cp hailort-*.whl zed-ros2-workspace/docker/        # Python wheel (Hailo 추론에 필요)
 
 cd zed-ros2-workspace/docker
 ./build.sh
 # 약 10~20분 소요
 cd ../..
 ```
+
+> **.deb와 .whl 모두 필요합니다.** .deb는 HailoRT 시스템 라이브러리, .whl은 Python `hailo_platform` 바인딩입니다.
+> 둘 다 [Hailo Developer Zone](https://hailo.ai/developer-zone/)에서 버전 5.2.0으로 다운로드하세요.
 
 ### 2-2. VLM 컨테이너 (비전 언어 모델)
 
@@ -254,6 +275,20 @@ cd ../..
 ```bash
 sudo reboot
 ```
+
+### (선택) Docker 이미지를 파일로 저장 — 오프라인 배포 시
+
+인터넷이 없는 환경으로 옮길 때 빌드된 이미지를 파일로 내보낼 수 있습니다.
+
+```bash
+# 저장 (온라인 PC에서)
+docker save vlm-ryzenai:latest | gzip > vlm-ryzenai.tar.gz
+
+# 복원 (오프라인 PC에서)
+docker load < vlm-ryzenai.tar.gz
+```
+
+> 모델 파일(`vlm/models/`)은 컨테이너 외부에 있으므로 별도로 복사해야 합니다.
 
 ---
 
@@ -431,9 +466,11 @@ python _20_vlm_gui.py
 
 | 증상 | 해결 |
 |------|------|
-| `hailo_platform import error` | 가상환경 활성화 후 `pip install hailort` 확인. HailoRT .deb 설치 확인 |
+| `hailo_platform import error` | `hailort`는 PyPI 미등록. developer-zone에서 wheel(.whl) 다운로드 후 `pip install hailort-*.whl` |
 | `hailortcli`에서 장치 안 보임 | `lspci \| grep Hailo`로 PCIe 인식 확인. M.2 슬롯 #2 재장착 |
-| HEF 로드 실패 | `--hw-arch hailo10h`로 모델 재다운로드 |
+| `dpkg -i` 설치 실패 (postinst 오류) | `sudo dpkg --unpack hailort_*.deb && sudo ldconfig` 사용 |
+| HEF 로드 실패 / 아키텍처 불일치 | `hailo_models/` 폴더에 `hailo10h` 전용 HEF가 있는지 확인. S3 URL로 재다운로드 |
+| `HAILO_NOT_IMPLEMENTED` (error 7) | HailoRT 4.x API(`ConfigureParams`) 사용 중. 5.x `InferModel` API 필요. 버전 확인: `hailortcli fw-control identify` |
 
 ### VLM이 안 된다
 
@@ -442,6 +479,14 @@ python _20_vlm_gui.py
 | 모델 다운로드 실패 | 인터넷 연결 확인. HuggingFace 계정 로그인 필요할 수 있음 |
 | `VitisAI EP not available` | AMD Ryzen AI SDK 설치 확인. `sudo modprobe amdxdna` 실행 |
 | 응답이 매우 느림 | NPU 미사용 중 (CPU fallback). Ryzen AI SDK 설치 확인 |
+
+### 카메라 파이프라인 오류
+
+| 증상 | 해결 |
+|------|------|
+| `Camera board socket already used` | DepthAI v3에서는 `StereoDepth.build(autoCreateCameras=True)`로 스테레오 카메라를 생성. CAM_B/CAM_C를 직접 `pipeline.create()`로 만들면 충돌 |
+| `Disparity/depth width must be multiple of 16` | `stereo.setDepthAlign(CAM_A)` 사용 시 발생. OAK-D Pro W RGB ISP 네이티브 폭(2024px)이 16의 배수가 아님. depth align 없이 사용 |
+| `XLinkOut not found` | DepthAI 3.x에서 `XLinkOut` 노드 제거됨. `cam.requestOutput()` + `queue.createOutputQueue()` 방식으로 대체 |
 
 ### 카메라 shared memory 끊김
 
@@ -514,8 +559,8 @@ cd face-recognition/docker && ./exec.sh
 
 | 용도 | 모델 | 크기 | 형식 | 실행 장치 | 다운로드 |
 |------|------|------|------|----------|---------|
-| **포즈 추정** | YOLOv8s-pose (COCO-17) | ~12MB | HEF | Hailo-10 [0] | 자동 (`hailo_models/yolov8s_pose.hef`) |
-| **얼굴 검출** | SCRFD 2.5g | ~3MB | HEF | Hailo-10 [0] (공유) | 자동 (`hailo_models/scrfd_2.5g.hef`) |
+| **포즈 추정** | YOLOv8m-pose (COCO-17) | 28MB | HEF | Hailo-10 [0] | 자동 (`hailo_models/yolov8m_pose.hef`) |
+| **얼굴 검출** | SCRFD 10g | 4.5MB | HEF | Hailo-10 [0] (공유) | 자동 (`hailo_models/scrfd_10g.hef`) |
 | **얼굴 임베딩** | InsightFace ArcFace (buffalo_l) | ~330MB | ONNX | CPU | 자동 (`~/.insightface/`) |
 | **VLM** | Gemma-3-4b-it-mm | ~4GB | ONNX | Ryzen AI NPU | 수동 ([1-8단계](#1-8-vlm-모델-다운로드)) |
 | **음성 인식 (STT)** | Whisper small (faster-whisper) | ~460MB | CTranslate2 | CPU (1개) / Hailo-10 [1] (2개) | 자동 (`~/.cache/whisper/`) |
@@ -526,8 +571,8 @@ cd face-recognition/docker && ./exec.sh
 ```
 Ryzen AI NPU ─── Gemma-3-4b-it-mm (VLM)
 
-Hailo-10 [0] ─┬─ YOLOv8s-pose (매 프레임, 상시)
-              └─ SCRFD 2.5g (얼굴 감지 시에만, 간헐)
+Hailo-10 [0] ─┬─ YOLOv8m-pose (매 프레임, 상시)
+              └─ SCRFD 10g (얼굴 감지 시에만, 간헐)
 
 Hailo-10 [1] ─── Whisper encoder (2개일 때만, 없으면 CPU)
 
@@ -541,8 +586,8 @@ CPU ─────────┬─ InsightFace ArcFace (얼굴 임베딩)
 
 | 모델 | 저장 경로 | 비고 |
 |------|----------|------|
-| YOLOv8s-pose HEF | `hailo_models/yolov8s_pose.hef` | 첫 실행 시 자동 |
-| SCRFD 2.5g HEF | `hailo_models/scrfd_2.5g.hef` | 첫 실행 시 자동 |
+| YOLOv8m-pose HEF | `hailo_models/yolov8m_pose.hef` | 첫 실행 시 자동 |
+| SCRFD 10g HEF | `hailo_models/scrfd_10g.hef` | 첫 실행 시 자동 |
 | Gemma-3-4b-it-mm | `vlm/models/Gemma-3-4b-it-mm-onnx-ryzenai-npu/` | 수동, ~4GB |
 | Whisper | `~/.cache/whisper/` (호스트) | 첫 실행 시 자동, ~460MB |
 | InsightFace buffalo_l | `~/.insightface/` (컨테이너 내) | 첫 실행 시 자동, ~330MB |

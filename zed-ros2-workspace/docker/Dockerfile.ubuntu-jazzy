@@ -7,10 +7,10 @@ FROM ${IMAGE_NAME}
 ARG ROS2_DIST=jazzy
 
 # ROS2 dependencies version (Jazzy-compatible, non-ZED)
-ARG ROBOT_LOCALIZATION_VERSION=3.7.2
+ARG ROBOT_LOCALIZATION_VERSION=3.9.4
 ARG NMEA_MSGS_VERSION=2.1.0
 ARG ANGLES_VERSION=1.16.0
-ARG GEOGRAPHIC_INFO_VERSION=1.0.7
+ARG GEOGRAPHIC_INFO_VERSION=1.0.6
 ARG RMW_CYCLONEDDS_VERSION=2.1.0
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -31,7 +31,9 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone &
 RUN apt-get update -y || true && \
   apt-get install -y --no-install-recommends zstd wget less cmake curl gnupg2 \
   build-essential python3 python3-pip python3-dev python3-setuptools libusb-1.0-0-dev \
-  libgeographic-dev zlib1g-dev -y
+  libgeographiclib-dev zlib1g-dev libboost-all-dev \
+  ros-jazzy-diagnostic-updater \
+  ros-jazzy-robot-localization -y
 
 RUN pip install --break-system-packages protobuf
 
@@ -44,48 +46,51 @@ COPY ros2_src/ ./
 
 # Install ROS2 dependencies from source (non-ZED packages only)
 WORKDIR /root/ros2_ws/src
-RUN wget https://github.com/cra-ros-pkg/robot_localization/archive/refs/tags/${ROBOT_LOCALIZATION_VERSION}.tar.gz -O - | tar -xvz && mv robot_localization-${ROBOT_LOCALIZATION_VERSION} robot-localization && \
-    wget https://github.com/ros-drivers/nmea_msgs/archive/refs/tags/${NMEA_MSGS_VERSION}.tar.gz -O - | tar -xvz && mv nmea_msgs-${NMEA_MSGS_VERSION} nmea_msgs && \
+RUN wget https://github.com/ros-drivers/nmea_msgs/archive/refs/tags/${NMEA_MSGS_VERSION}.tar.gz -O - | tar -xvz && mv nmea_msgs-${NMEA_MSGS_VERSION} nmea_msgs && \
     wget https://github.com/ros/angles/archive/refs/tags/${ANGLES_VERSION}.tar.gz -O - | tar -xvz && mv angles-${ANGLES_VERSION} angles && \
     wget https://github.com/ros2/rmw_cyclonedds/archive/refs/tags/${RMW_CYCLONEDDS_VERSION}.tar.gz -O - | tar -xvz && mv rmw_cyclonedds-${RMW_CYCLONEDDS_VERSION} rmw_cyclonedds && \
     wget https://github.com/ros-geographic-info/geographic_info/archive/refs/tags/${GEOGRAPHIC_INFO_VERSION}.tar.gz -O - | tar -xvz && mv geographic_info-${GEOGRAPHIC_INFO_VERSION} geographic-info && \
     cp -r geographic-info/geographic_msgs/ . && \
     rm -rf geographic-info
 
-# Install cython
-RUN python3 -m pip install --break-system-packages --upgrade cython
-# Upgrade opencv-python
-RUN python3 -m pip install --break-system-packages opencv-contrib-python --upgrade
-# Pin numpy to 1.26.x (compatible with Python 3.12)
-RUN python3 -m pip install --break-system-packages numpy==1.26.4
+# Install cython, numpy, opencv
+RUN python3 -m pip install --break-system-packages --upgrade cython && \
+    python3 -m pip install --break-system-packages --ignore-installed opencv-contrib-python numpy==1.26.4
 
-# Build the ROS2 packages (canine_msgs_v2, rplidar_ros, etc.)
+# Build the ROS2 packages
 WORKDIR /root/ros2_ws
 RUN /bin/bash -c "source /opt/ros/$ROS_DISTRO/setup.bash && \
   colcon build --parallel-workers $(nproc) --symlink-install \
   --event-handlers console_direct+ --base-paths src \
+  --packages-ignore zed_components zed_ros2 zed_wrapper \
   --cmake-args ' -DCMAKE_BUILD_TYPE=Release' \
   ' --no-warn-unused-cli' "
 
-# Nav2 installation
-RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg &&\
-   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null && \
-   apt-get update && \
-   apt-get -o Dpkg::Options::="--force-overwrite" install ros-jazzy-navigation2 ros-jazzy-nav2-bringup -y && \
+# Nav2 installation (Redundant key setup removed)
+RUN apt-get update && \
+   apt-get install -y --no-install-recommends \
+   ros-jazzy-navigation2 \
+   ros-jazzy-nav2-bringup && \
    rm -rf /var/lib/apt/lists/*
 
-# OAK-D Pro W (DepthAI SDK — camera only, no on-device NN)
+# OAK-D Pro W
 RUN pip install --break-system-packages depthai
 
-# Hailo-10 (HailoRT for pose estimation inference)
-# HailoRT .deb must be pre-downloaded from https://hailo.ai/developer-zone/
-# and placed in the docker build context as hailort_*.deb
-# If the .deb is not present, skip Hailo install (camera-only mode still works)
+# Hailo model auto-downloader + pre-cache HEF models at build time
+# Cached to /root/hailo_models_cache/ (outside /root/workspace volume mount)
+# entrypoint.sh copies to /root/workspace/hailo_models/ at container startup
+RUN mkdir -p /root/hailo_models_cache && \
+    hailo model-zoo download --model yolov8m_pose --hw-arch hailo10h 2>/dev/null && \
+    hailo model-zoo download --model scrfd_10g    --hw-arch hailo10h 2>/dev/null && \
+    find / -name "yolov8m_pose.hef" -o -name "scrfd_10g.hef" 2>/dev/null \
+    | xargs -I{} cp {} /root/hailo_models_cache/ 2>/dev/null || \
+    echo "[HAILO] Pre-download failed — will download at runtime"
+
+# Hailo-10
 RUN --mount=type=bind,source=.,target=/ctx \
     if ls /ctx/hailort*.deb 1>/dev/null 2>&1; then \
         cp /ctx/hailort*.deb /tmp/ && \
         dpkg -i /tmp/hailort*.deb || apt-get install -f -y && \
-        pip install --break-system-packages hailort && \
         rm -f /tmp/hailort*.deb && \
         echo "[HAILO] HailoRT installed"; \
     else \
@@ -97,7 +102,13 @@ WORKDIR /root/third_party
 RUN git clone https://github.com/ROBOTIS-GIT/DynamixelSDK.git
 WORKDIR /root/third_party/DynamixelSDK/python
 RUN pip install --break-system-packages . --no-build-isolation
-RUN add-apt-repository universe && apt update && apt install ffmpeg libportaudio2 -y
+
+# Fix for add-apt-repository
+RUN apt-get update && apt-get install -y software-properties-common && \
+    add-apt-repository universe && apt-get update && \
+    apt-get install -y ffmpeg libportaudio2 && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN pip install --break-system-packages pynput sounddevice pydub
 
 RUN mkdir -p /root/workspace

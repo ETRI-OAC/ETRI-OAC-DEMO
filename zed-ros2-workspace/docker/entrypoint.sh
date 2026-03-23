@@ -1,7 +1,12 @@
 #!/bin/bash
 set -e
 
-# Append Git prompt and PS1 config to .bashrc if not already present
+# 1. Export essential ROS 2 environment variables
+export ROS_DOMAIN_ID=0
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export RCUTILS_COLORIZED_OUTPUT=1 # ROS 2 로그 가독성 향상
+
+# Append Git prompt, PS1 config, and ROS 2 sourcing to .bashrc if not already present
 BASHRC="/root/.bashrc"
 
 if ! grep -q "git-prompt.sh" "$BASHRC"; then
@@ -15,19 +20,12 @@ elif [ -f "/etc/bash_completion.d/git-prompt" ]; then
 fi
 
 # ANSI colors
-red="\[\033[0;31m\]"
 green="\[\033[0;32m\]"
-yellow="\[\033[0;33m\]"
 blue="\[\033[0;34m\]"
 reset="\[\033[0m\]"
-bright_black="\[\033[1;30m\]"
-bright_red="\[\033[1;31m\]"
 bright_green="\[\033[1;32m\]"
-bright_yellow="\[\033[1;33m\]"
 bright_blue="\[\033[1;34m\]"
-bright_magenta="\[\033[1;35m\]"
 bright_cyan="\[\033[1;36m\]"
-bright_white="\[\033[1;37m\]"
 
 # Prompt format with git branch
 PS1="🐳 OAK-ROS2 "
@@ -38,44 +36,52 @@ PS1+=" \$ "
 
 export PS1
 
-# Source ROS 2 setup (try both install/ subdir and direct, for Humble vs Jazzy compat)
-if [ -f "/opt/ros/$ROS_DISTRO/install/setup.bash" ]; then
-    source "/opt/ros/$ROS_DISTRO/install/setup.bash"
-fi
+# Source ROS 2 base and workspace (Interactive shell)
 source "/opt/ros/$ROS_DISTRO/setup.bash"
-source "/root/ros2_ws/install/local_setup.bash"
-
+if [ -f "/root/ros2_ws/install/setup.bash" ]; then
+    source "/root/ros2_ws/install/setup.bash"
+fi
 EOF
 fi
 
-# setup ros2 environment (try both install/ subdir and direct, for Humble vs Jazzy compat)
-if [ -f "/opt/ros/$ROS_DISTRO/install/setup.bash" ]; then
-    source "/opt/ros/$ROS_DISTRO/install/setup.bash"
-fi
+# 2. Source ROS 2 environment for the entrypoint context
 source "/opt/ros/$ROS_DISTRO/setup.bash"
-source "/root/ros2_ws/install/local_setup.bash"
+if [ -f "/root/ros2_ws/install/setup.bash" ]; then
+    source "/root/ros2_ws/install/setup.bash"
+fi
 
-export ROS_DOMAIN_ID=0
-
-# Welcome information
-echo "OAK-D ROS2 Docker Image"
-echo "---------------------"
-echo 'ROS distro: ' $ROS_DISTRO
-echo 'DDS middleware: ' $RMW_IMPLEMENTATION
-echo 'ROS 2 Workspaces:' $COLCON_PREFIX_PATH
-echo 'ROS 2 Domain ID:' $ROS_DOMAIN_ID
-echo ' * Note: Host and Docker image Domain ID must match to allow communication'
-echo 'Local IPs:' $(hostname -I)
-echo "---"  
-
-set -e
+# 3. Welcome information
+echo "==================================="
+echo "     OAK-D ROS2 Docker Image       "
+echo "==================================="
+echo " * ROS distro        : $ROS_DISTRO"
+echo " * DDS middleware    : $RMW_IMPLEMENTATION"
+echo " * ROS 2 Workspaces  : $COLCON_PREFIX_PATH"
+echo " * ROS 2 Domain ID   : $ROS_DOMAIN_ID"
+echo " * Local IPs         : $(hostname -I)"
+echo "-----------------------------------"  
+echo " Note: Host and Docker image Domain ID must match to allow communication."
 
 # Trust the mounted repo path to avoid Git "dubious ownership" error
 if [ -d "/home" ]; then
     git config --global --add safe.directory /home || true
 fi
 
-echo "OAK-ROS2 container is ready!"
+# Dockerfile에서 설정한 workspace 경로도 추가
+git config --global --add safe.directory /root/workspace || true
 
-# Start an interactive shell
-exec bash
+# Copy pre-cached Hailo HEF models to workspace (survives volume mount)
+HAILO_CACHE="/root/hailo_models_cache"
+HAILO_DEST="/root/workspace/hailo_models"
+if [ -d "$HAILO_CACHE" ] && ls "$HAILO_CACHE"/*.hef 2>/dev/null | grep -q .; then
+    mkdir -p "$HAILO_DEST"
+    for hef in "$HAILO_CACHE"/*.hef; do
+        fname=$(basename "$hef")
+        if [ ! -f "$HAILO_DEST/$fname" ]; then
+            cp "$hef" "$HAILO_DEST/"
+            echo "[HAILO] Copied $fname from image cache to $HAILO_DEST"
+        fi
+    done
+fi
+
+exec "$@"

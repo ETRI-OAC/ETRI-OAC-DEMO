@@ -132,6 +132,40 @@ Test scripts in `zed-ros2-workspace/test_scripts/` build incrementally:
 - `_22_usertracking_gui.py` → Outdoor: real-time person following via dynamic goal updates + pan-tilt centering
 - `23_gui_integrated.py` → Combined demo
 
+## Hardware Setup (one-time)
+
+### OAK-D Pro W USB permissions
+```bash
+echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="03e7", MODE="0666"' | sudo tee /etc/udev/rules.d/80-movidius.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+# Must connect to USB3 (blue) port — USB2 lacks bandwidth
+```
+
+### Hailo-10 HEF models
+HEF models auto-download on first server start via `hailo_model_downloader.py` (shared across `oak_wrapper/`, `face-recognition/`, `tts-stt/`). Models are cached in `hailo_models/` at project root.
+```bash
+pip install hailo_model_zoo   # required for auto-download
+# Offline pre-download:
+hailo model-zoo download --model yolov8m_pose --hw-arch hailo10h
+hailo model-zoo download --model scrfd_10g --hw-arch hailo10h
+cp yolov8m_pose.hef scrfd_10g.hef hailo_models/
+```
+
+### Hailo device auto-allocation
+Device count is detected at startup via `hailo_utils.py` (shared by all services) — no manual config needed.
+
+| Hailo devices | device[0] | device[1] |
+|--------------|-----------|-----------|
+| 1 | Pose (OAK) + Face (shared) | STT uses CPU |
+| 2 | Pose (OAK) + Face (shared) | STT (Whisper) |
+
+### Python venv (host-side scripts only)
+Ubuntu 24.04 blocks system-wide `pip install`. Containers handle their own deps; for running scripts on the host:
+```bash
+python3 -m venv ~/opr-venv && source ~/opr-venv/bin/activate
+# Add to .bashrc to auto-activate on login
+```
+
 ## Development Notes
 
 - Camera shared memory connection breaks when main scripts exit; restart camera server (`./zed-ros2-workspace/run_oak_server.sh`) before re-running demo scripts
@@ -141,7 +175,8 @@ Test scripts in `zed-ros2-workspace/test_scripts/` build incrementally:
 - All containers mount project root to `/root/workspace/` — code edits on host are live inside containers
 - Nav2 uses omni-directional motion model (`nav2_amcl::OmniMotionModel`) since the quadruped can strafe
 - Korean TTS model files are stored via Git LFS (`tts-stt/tts_model/`); run `git lfs pull` after clone
-- SLAM map building procedure is documented in `docs/slam-map.md`
+- SLAM map building: `docs/slam-map.md` (full procedure) or `zed-ros2-workspace/SLAM_Nav/commands.txt` (quick reference)
 - Old Jetson/L4T Dockerfile kept as `Dockerfile.l4t-humble` for reference; active build uses `Dockerfile.ubuntu-jazzy`
 - Old ZED server kept in `zed_wrapper/` for reference; active camera server is `oak_wrapper/oak_server.py`
-- Body tracking uses YOLOv8s-pose (COCO-17) on Hailo-10 accelerator; OAK-D Pro W provides camera frames only (no on-device NN); keypoint index 0 = NOSE (used for pan-tilt); head orientation estimated geometrically from eye/ear keypoints
+- Body tracking uses YOLOv8m-pose (COCO-17) on Hailo-10 accelerator; OAK-D Pro W provides camera frames only (no on-device NN); keypoint index 0 = NOSE (used for pan-tilt); head orientation estimated geometrically from eye/ear keypoints
+- Per-service container documentation: `docs/zed-ros2-container.md`, `docs/vlm-container.md`, `docs/tts-stt-container.md`, `docs/face-recognition-container.md`

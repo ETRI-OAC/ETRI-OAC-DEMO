@@ -1,5 +1,6 @@
 services:
   tts-stt:
+    container_name: base-tts-stt-1
     build:
       context: .
       dockerfile: Dockerfile

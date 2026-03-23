@@ -59,7 +59,7 @@ class FaceRecognizer:
                 from hailo_utils import is_hailo_available
                 if is_hailo_available():
                     from hailo_model_downloader import get_hef_path
-                    hailo_hef_path = get_hef_path("scrfd_2.5g")
+                    hailo_hef_path = get_hef_path("scrfd_10g")
             except ImportError:
                 pass
 

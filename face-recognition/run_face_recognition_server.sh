@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="${SCRIPT_DIR}/docker"
 CONTAINER_NAME="face-recognition"
 DOCKER_COMPOSE_FILE="docker-compose.yaml"
-COMMAND="cd /root/workspace/face-recognition && python face_recognition_server.py"
+COMMAND="cd /root/workspace/face-recognition && python3 face_recognition_server.py"
 
 
 # Must run compose from docker dir so volume ../../ resolves to project root
