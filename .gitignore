@@ -30,3 +30,13 @@ log/
 
 # === zed ros2 workspace ignores ===
 zed-ros2-workspace/zed_wrapper/core*
+
+# === Hailo binaries (proprietary, download from developer-zone) ===
+*.deb
+*.whl
+
+# === Hailo HEF model files (auto-downloaded from S3 at runtime) ===
+hailo_models/
+
+# === Build/runtime caches ===
+**/.cache/
