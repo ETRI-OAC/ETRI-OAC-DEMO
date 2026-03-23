@@ -173,6 +173,8 @@ ls /dev/accel/accel*
 
 # Python 패키지 설치
 pip install onnxruntime-vitisai transformers pillow huggingface_hub
+
+pip install onnxruntime transformers pillow huggingface_hub
 ```
 
 ### 1-8. VLM 모델 다운로드
