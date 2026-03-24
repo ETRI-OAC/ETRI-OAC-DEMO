@@ -39,4 +39,4 @@ zed-ros2-workspace/zed_wrapper/core*
 hailo_models/
 
 # === Build/runtime caches ===
-**/.cache/
+**/.cache/vlm/models/

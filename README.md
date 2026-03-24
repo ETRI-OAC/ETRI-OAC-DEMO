@@ -474,7 +474,7 @@ curl http://localhost:7999/health
 3. Twist republisher를 실행합니다:
    ```bash
    cd zed-ros2-workspace/docker && ./exec.sh
-   cd /root/workspace/zed-ros2-workspace/SLAM_Nav
+   cd /root/workspace/SLAM_Nav
    python repub_twist2canine.py
    ```
 
@@ -489,7 +489,7 @@ cd zed-ros2-workspace
 
 # 터미널 B: 데모 GUI 실행
 cd zed-ros2-workspace/docker && ./exec.sh
-cd /root/workspace/zed-ros2-workspace/test_scripts
+cd /root/workspace/demo
 python _22_usertracking_gui.py
 ```
 
@@ -508,13 +508,13 @@ cd zed-ros2-workspace
 
 # 터미널 B: 키보드로 로봇 위치 초기화
 cd zed-ros2-workspace/docker && ./exec.sh
-cd /root/workspace/zed-ros2-workspace/SLAM_Nav
+cd /root/workspace/SLAM_Nav
 python keyboard_teleop.py
 # RViz에서 로봇 위치가 맞으면 Ctrl+C
 
 # 터미널 C: 데모 GUI 실행
 cd zed-ros2-workspace/docker && ./exec.sh
-cd /root/workspace/zed-ros2-workspace/test_scripts
+cd /root/workspace/demo
 python _21_patrol_gui.py
 ```
 
@@ -524,7 +524,7 @@ python _21_patrol_gui.py
 
 ```bash
 cd zed-ros2-workspace/docker && ./exec.sh
-cd /root/workspace/zed-ros2-workspace/test_scripts
+cd /root/workspace/demo
 python _20_vlm_gui.py
 ```
 

@@ -9,7 +9,7 @@ CONTAINER_NAME="base-zed_ros2_env-1"
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 COMMAND="""source '/opt/ros/jazzy/setup.bash' && \
 source '/root/ros2_ws/install/local_setup.bash' && \
-cd /root/workspace/zed-ros2-workspace/openpath_CANINE_middleware/python_scripts && python3 pantiltNode.py"""
+cd /root/workspace/openpath_CANINE_middleware/python_scripts && python3 pantiltNode.py"""
 
 # Must run compose from docker dir so volume ../../ resolves to project root
 cd "$DOCKER_DIR"

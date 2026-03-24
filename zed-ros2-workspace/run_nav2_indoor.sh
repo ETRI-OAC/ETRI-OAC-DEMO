@@ -8,8 +8,8 @@ DOCKER_DIR="${SCRIPT_DIR}/../nav2/docker"
 CONTAINER_NAME="nav2"
 COMMAND="source /opt/ros/jazzy/setup.bash && \
 ros2 launch nav2_bringup bringup_launch.py \
-  map:=/root/workspace/zed-ros2-workspace/SLAM_Nav/map/map_etri.yaml \
-  params_file:=/root/workspace/zed-ros2-workspace/SLAM_Nav/config/nav2_params.yaml"
+  map:=/root/workspace/SLAM_Nav/map/map_etri.yaml \
+  params_file:=/root/workspace/SLAM_Nav/config/nav2_params.yaml"
 
 cd "$DOCKER_DIR"
 

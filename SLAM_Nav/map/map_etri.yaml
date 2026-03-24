@@ -1,4 +1,4 @@
-image: /root/workspace/zed-ros2-workspace/SLAM_Nav/map/map_etri.pgm
+image: /root/workspace/SLAM_Nav/map/map_etri.pgm
 mode: trinary
 resolution: 0.05
 origin: [-19.8, -56.4, 0]

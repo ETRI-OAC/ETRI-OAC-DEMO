@@ -1,4 +1,4 @@
-image: /root/workspace/zed-ros2-workspace/SLAM_Nav/map/map.pgm
+image: /root/workspace/SLAM_Nav/map/map.pgm
 resolution: 0.050000
 origin: [-13.516791, -29.712634, 0.000000]
 negate: 0

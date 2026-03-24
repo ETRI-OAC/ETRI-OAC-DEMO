@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="${SCRIPT_DIR}/hailo-inference/docker"
 CONTAINER_NAME="hailo-inference"
 
-COMMAND="cd /root/workspace && python3 hailo_inference_server.py --port 8003"
+COMMAND="cd /root/workspace/hailo-inference && python3 hailo_inference_server.py --port 8003"
 
 # Must run compose from docker dir so volume ../../ resolves to project root
 cd "$DOCKER_DIR"

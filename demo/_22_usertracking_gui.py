@@ -5,21 +5,19 @@ import cv2
 
 import time
 import numpy as np
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root and zed-ros2-workspace to path
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(PROJECT_ROOT)
+sys.path.append(os.path.join(PROJECT_ROOT, 'zed-ros2-workspace'))
 from clients.zed_client import ZedClient
 from clients.stt_client import STTClient
 from clients.tts_client import TTSClient
 from clients.face_recognition_client import FaceRecognitionClient
 # from clients.vlm_client import VLLMClient
-from _20_vlm_gui import VLLMClient, VLLMThread
 from zed_wrapper.body_tracking_visualizer import visualize_bodies_2d
 from utils.pid import PIDControllerClass
 
-# GUI
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
-from PyQt5.QtCore import QThread, pyqtSignal, Qt
-from PyQt5.QtGui import QPixmap
-from gui.gui_threads import DemoQtWidget
+from _20_vlm_gui import VLLMThread, VLLMClient
 
 import rclpy
 from rclpy.node import Node
@@ -30,58 +28,53 @@ from action_msgs.msg import GoalStatusArray
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
 
-# WAYPOINTS = [((-2.88689, -1.29752, 0., 0., 0., -0.417859, 0.908512)), #(x,y,z,qx,qy,qz,qw)
-#             ((1.56717, -6.46273, 0., 0., 0., -0.418961, 0.908004)),
-#             ((3.58321, -8.42727, 0., 0., 0., -0.399719, 0.916638)),
-#             # ((7.33938, -12.266, 0., 0., 0., -0.407712, 0.913111))
-# ]
+# GUI
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
+from PyQt5.QtCore import QThread, pyqtSignal, Qt
+from PyQt5.QtGui import QPixmap
+from gui_threads import DemoQtWidget
 
-WAYPOINTS = [((0.694054, -8.85587, 0., 0., 0., -0.684484, 0.729028)), #(x,y,z,qx,qy,qz,qw)
-            ((-4.57819, -14.2423, 0., 0., 0., -0.711791, 0.702391)),
-            ((-5.20466, -22.4224, 0., 0., 0., -0.666923, 0.745127)),
-            ((3.49335, -35.6834, 0., 0., 0., -0.68235, 0.731026))
+WAYPOINTS = [((-2.88689, -1.29752, 0., 0., 0., -0.417859, 0.908512)), #(x,y,z,qx,qy,qz,qw)
+            ((1.56717, -6.46273, 0., 0., 0., -0.418961, 0.908004)),
+            ((3.58321, -8.42727, 0., 0., 0., -0.399719, 0.916638)),
+            # ((7.33938, -12.266, 0., 0., 0., -0.407712, 0.913111))
 ]
 
-
-
-class faceIdentificationWithNav(Node):
-    def __init__(self, zed_client, tts_client, face_recognition_client, use_navigation= True, use_audio=True):
-        super().__init__('face_identification_with_nav')
-
-        # Init zed client and tts client
+class humanTracking(Node):
+    def __init__(self, zed_client, tts_client):
+        super().__init__('human_tracking')
         self.zed_client = zed_client
-        self.image_display = self.zed_client.grab_image()
         self.tts_client = tts_client
+        # what's modified: vllm client separated to another thread
+        # self.vlm_client = VLLMClient(tts_client=self.tts_client)
         
         # Init face recognition
-        self.face_recognition_client = face_recognition_client
+        self.face_recognition_client = FaceRecognitionClient()
         self.face_id_memory = {} # {id: name}
-        self.recognized_names = set() # set of recognized names
-        self.target_id = 0
-        self.target_id_prev = 0
+        self.target_id = -1
         self.face_recognition_cnt = 0
         self.not_unknown_cnt = 0
         self.not_looking_cnt = 0
         self.recognition_name = None
-        self.use_audio = use_audio
-        self.use_navigation = use_navigation
+        self.body_ids = []
 
         # Init pan-tilt
         self.pantilt_state = [0., -30.]
         self.pantilt_command = [0., -30.]
-        self.pid = PIDControllerClass(k_p= 30, k_d = 1, out_min=-30, out_max=30, dim=1, out_alpha=0.5)
+        self.pid = PIDControllerClass(k_p= 30, k_d = 1, out_min=-30, out_max=30, dim=1, out_alpha=0.6)
         self.pid.reset()
         self.center_cam_xy = np.array([self.zed_client.image_shape[1]/2, self.zed_client.image_shape[0]/2])
         self.t_s = time.time()
 
         # Init navigation
         self.navigation_status = "Waiting"
-        self.navigation_resume_flag = True
+        self.navigation_resume_flag = False # True
         self.current_waypoint_index = 0
         self.waypoints = WAYPOINTS
         self.stop = False
 
         # Init cv2 window
+        self.image_display = self.zed_client.grab_image()
         if self.zed_client.shm_image_block is None:
             print("[CLIENT] Image shared memory not available. Is the server running?")
             return
@@ -91,141 +84,79 @@ class faceIdentificationWithNav(Node):
         # cv2.resizeWindow("ZED Client - Body Tracking", self.image_width, self.image_height)
 
         # Init ROS2 Components
-        self.pub_face_pose = self.create_publisher(PoseStamped, 'face_pose', 10)
+        self.pub_face_pose = self.create_publisher(PoseStamped, 'goal_update', 10)
         self.sub_pantilt_state = self.create_subscription(Float64MultiArray, 'pantilt_state', self.pantilt_state_callback, 10)
         self.pub_pantilt_command = self.create_publisher(Float64MultiArray, 'pantilt_command', 10)
         self.subscription = self.create_subscription(GoalStatusArray,'/navigate_to_pose/_action/status',self.nav_status_callback, 1)
-        self.timer = self.create_timer(0.02, self.timer_callback)
+        self.main_timer = self.create_timer(0.02, self.main_timer_callback)
+        self.reset_nav_timer = self.create_timer(1.0, self.reset_nav_timer_callback)
         self.timer_flag = False
 
         # Init pan-tilt pose
+        self.pantilt_command = [0., -30.]
         for _ in range(30):
-            print(f"[PAN-TILT] Publishing command: {self.pantilt_command}")
             self.publish_pantilt_command()
+            rclpy.spin_once(self)
             time.sleep(0.02)
 
     """___MAIN LOOP___"""
-    def timer_callback(self):
-        # print("A")
+    def main_timer_callback(self):
         # Update Navigation Status
-        if self.use_navigation:
-            self.handle_nav_goal()
-        # if self.stop:
-        #     # print("[NAV2] Stop Flag On")
-        #     time.sleep(0.01)
-        #     return
+        # self.handle_nav_goal()
+        if self.stop:
+            print("Scenario Ended")
+            return
 
         # Update Image and Bodies from ZED
         image = self.zed_client.grab_image()
         self.image_display = image.copy()
         bodies = self.zed_client.grab_bodies()
-        # print("B")
-        # Check if person detected
-        if bodies is not None and len(bodies) > 0: # at least one person detected
+
+        if bodies is not None and len(bodies) > 0:
             self.image_display = self.overlay_bodies_on_image(self.image_display, bodies)
-            bodies = self.filter_bodies(bodies, 2.3) # Leave only bodies in the threshold distance
-            filtered_body_ids = self.get_body_ids(bodies)
-            not_treated_ids = []
-            for id in filtered_body_ids:
-                if not id in self.face_id_memory.keys():
-                    not_treated_ids.append(id)
-
-            if len(not_treated_ids) > 0:
-                self.target_id = not_treated_ids[0]
-                face_recognition_flag = True
-            else:
-                face_recognition_flag = False
-            
-            # Check if the target id is changed
-            if self.target_id_prev != self.target_id:
-                self.target_id_prev = self.target_id
-                # initialize face recognition counters
-                self.not_looking_cnt = 0
-                self.face_recognition_cnt = 0
-                self.not_unknown_cnt = 0
-                self.recognition_name = None
-
-            # Stop Navigation if there is a person who is not treated before
-            if self.navigation_status == "Navigating" and face_recognition_flag:
-                print("Face recognition started, canceling navigation")
-                self.cancel_nav2_navigation()
-                # time.sleep(0.1)
-                return
-            # Resume Navigation if there is no person who is not treated before
-            elif self.navigation_status == "Cancelled" and not face_recognition_flag:
-                print("Face recognition ended, resuming navigation")
-                self.navigation_resume_flag = True
-                # time.sleep(0.5)
-                time.sleep(0.01)
-                return
-        else: # nobody detected
-            if self.navigation_status == "Cancelled":
-                self.navigation_resume_flag = True
-                # time.sleep(0.5)
-                time.sleep(0.01)
-                return
-
-        # print("C")
-        # Process each face in the threshold distance
-        for body in bodies:
-            if body['id'] == self.target_id:
-                self.publish_face_pose(body) # publish face pose, which will be used in future
-                face_image, bbox = self.crop_face(image, body)
-                if face_image is not None: # if face is in the image (not out of bounds)
-                    # Check if the person is looking at the camera
-                    is_looking_at_cam = self.is_person_looking_at_cam(body)
-                    if is_looking_at_cam:
-                        result,_ = self.face_recognition_client.recognize(face_image, measure_time=False)
-                        self.overlay_face_recognition_result(self.image_display, bbox, body['id'], result['name'], result['similarity'], "looking")
-                        self.not_looking_cnt = 0 # reset not looking counter
-                        self.face_recognition_cnt += 1
-                        if result['name'] != "Unknown": 
-                            if self.recognition_name is None: # first recognition
-                                self.recognition_name = result['name']
-                            else:
-                                self.not_unknown_cnt += 1
-                            if result['name'] in self.recognized_names: # already recognized
-                                # update target id and initialize counters
-                                self.face_id_memory[body['id']] = result['name']
-                                self.target_id += 1
-                                self.face_recognition_cnt = 0
-                                self.not_unknown_cnt = 0
-                                self.recognition_name = None
-                        if self.face_recognition_cnt > 30: # if face recognition is successful for 20 frames
-                            if self.not_unknown_cnt > 5: # if not unknown for 5 rames out of 20 frames
-                                self.face_id_memory[body['id']] = self.recognition_name
-                                self.recognized_names.add(self.recognition_name)
-                                if self.use_audio:
-                                    self.tts_client.speak(text=f"{self.recognition_name} 님 안녕하세요.")
-                            else:
-                                self.face_id_memory[body['id']] = "Unknown"
-                                if self.use_audio:
-                                    self.tts_client.speak(text="등록되지 않은 인물입니다. 확인 부탁드립니다.")
-                            # update target id and initialize counters
-                            self.target_id += 1
-                            self.face_recognition_cnt = 0
-                            self.not_unknown_cnt = 0
-                            self.recognition_name = None
-                    else: # the person is not looking at the camera
-                        self.not_looking_cnt += 1
-                        self.overlay_face_recognition_result(self.image_display, bbox, body['id'], "Recognizing...", 0.0, "not looking")
-                        if self.not_looking_cnt > 60: # if not looking for 60 frames
-                            if self.use_audio:
-                                self.tts_client.speak(text="카메라를 응시해주세요")
-                            # initialize counters
-                            self.not_looking_cnt = 0
-                            self.face_recognition_cnt = 0
-                            self.not_unknown_cnt = 0
-                            self.recognition_name = None
-                self.move_pantilt(body)
-            else: # the person is not the target person
-                _, bbox = self.crop_face(image, body)
-                if bbox is not None: # if face is in the image (not out of bounds)
-                    self.overlay_face_bbox(self.image_display, bbox, body['id'], self.face_id_memory.get(body['id'], "Not recognized"))
+            self.body_ids = self.get_body_ids(bodies)
+            # what's modified: exception for 0 index -> disabled
+            # if self.target_id not in self.body_ids: # No target id found
+            #     self.target_id = self.body_ids[0]
+            for body in bodies:
+                body_id = body['id']
+                _, bbox = self.crop_face(self.image_display, body)
+                if body_id == self.target_id:
+                    self.publish_face_pose(body)
+                    self.move_pantilt(body)
+                    if bbox is not None:
+                        self.image_display = self.overlay_face_bbox(self.image_display, bbox, body_id, name="tracking target")
+                elif bbox is not None:
+                    self.image_display = self.overlay_face_bbox(self.image_display, bbox, body_id, name="unknown")
         self.timer_flag = True
-        # print("D")
-        # self.imshow(self.image_display)
-        # print("E")
+        # self.imshow(image_display)
+    
+    def reset_nav_timer_callback(self):
+        """
+        CHANGED
+            - this function handles every start of navigation 
+            - Initializes very first navigation 
+            - if cannceled -> resume with checking resume flag 
+        """
+        if self.navigation_status != "Navigating" and self.navigation_resume_flag == True:
+            if self.target_id in self.body_ids:
+                print("Initializing Navigation to target id: ", self.target_id)
+                self.pantilt_command = [0., -30.]
+                self.publish_pantilt_command()
+                self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
+            else:
+                print("No target id found in the scene. Cannot start navigation.")
+            
+            # test
+        #     print("Initializing Navigation to target id: ", self.target_id)
+        #     self.pantilt_command = [0., -30.]
+        #     self.publish_pantilt_command()
+        #     self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
+        #     self.navigatioin_resume_flag = False
+        #     self.navigation_resume_flag = False # wait until target id is found to start navigation
+        # elif self.navigation_status != "Navigating" and self.navigation_resume_flag == False:
+        #     # no resume, cancelled, just standing 
+        #     pass
 
     """___NAVIGATION FUNCTIONS___"""
     def send_navigation_goal(self, goal, frame_id='map'):
@@ -236,7 +167,6 @@ class faceIdentificationWithNav(Node):
             Returns:
                 None
         """
-        # 1. heavy
         client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         self.get_logger().info('Waiting for Nav2 action server...')
         if not client.wait_for_server(timeout_sec=10.0):
@@ -257,7 +187,6 @@ class faceIdentificationWithNav(Node):
         self.get_logger().info(f'Goal sent to Nav2')
         send_goal_future = client.send_goal_async(goal_msg) # Bug: The client doesn't receive the response from the service
 
-
     def handle_nav_goal(self):
         """
             Handle navigation goal
@@ -272,32 +201,12 @@ class faceIdentificationWithNav(Node):
                 self.navigation_status = "End"
                 self.stop = True
 
-        elif not self.stop and self.navigation_resume_flag:
+        elif self.navigation_resume_flag:
             print(f"Resuming navigation to waypoint {self.current_waypoint_index}")
             self.navigation_resume_flag = False
             self.pantilt_command = [0.,-30.]
             self.publish_pantilt_command()
             self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
-        # # print("Handling navigation goal")
-        # # print("navigation status:", self.navigation_status)
-        # if self.stop and self.navigation_status not in  ["Cancelled", "Goal Reached"]:
-        #     self.cancel_nav2_navigation()
-        #     # self.navigation_resume_flag = True
-        # elif self.navigation_status == "Goal Reached":
-        #     if self.current_waypoint_index < len(self.waypoints) - 1:
-        #         print(f"Updating to waypoint {self.current_waypoint_index + 1}")
-        #         self.current_waypoint_index += 1 # update waypoint index
-        #         self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
-        #     else:
-        #         print("Reached the last waypoint")
-        #         self.navigation_status = "End"
-        #         self.stop = True
-        # elif not self.stop and self.navigation_resume_flag: # kisang, here
-        #     print(f"Resuming navigation to waypoint {self.current_waypoint_index}")
-        #     self.navigation_resume_flag = False
-        #     self.pantilt_command = [0.,-30.]
-        #     self.publish_pantilt_command()
-        #     self.send_navigation_goal(self.waypoints[self.current_waypoint_index])
 
     def cancel_nav2_navigation(self):
         """
@@ -318,10 +227,11 @@ class faceIdentificationWithNav(Node):
         request.goal_info.goal_id.uuid = [0] * 16 
         request.goal_info.stamp.sec = 0
         request.goal_info.stamp.nanosec = 0
+
+        self.get_logger().info('Sending cancel request...')
         
         # 3. Call the service and block until it finishes
         future = client.call_async(request) # Bug: The client doesn't receive the response from the service
-        self.get_logger().info('Sent cancel request to Nav2')
 
     def nav_status_callback(self, msg):
         """
@@ -439,6 +349,8 @@ class faceIdentificationWithNav(Node):
         text = "카메라를 응시해주세요"
         print("[TTS] speaking: ", text)
         response, _ = self.tts_client.speak(text=text)
+        if response.get("success"):
+            print("[TTS] spoke look at cam message")
         return response.get("success")
 
     """___VISULIZATION FUNCTIONS___"""
@@ -457,6 +369,7 @@ class faceIdentificationWithNav(Node):
     
     def overlay_face_recognition_result(self, image, face_bbox, id, name, similarity, info=None):
         x1, y1, x2, y2 = face_bbox
+        image = cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
         if info is None:
             text = f"ID: {id} / {name} / ({similarity:.2f})"
         else:
@@ -473,14 +386,16 @@ class faceIdentificationWithNav(Node):
         rect_x2 = x1 + text_width + 10   # padding
         rect_y2 = y2 + text_height + 15  # padding
 
-        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+        # Draw filled rectangle for background (red)
         cv2.rectangle(image, (rect_x1, rect_y1), (rect_x2, rect_y2), (0, 0, 255), -1)
 
         # Draw text (white)
         text_org = (x1 + 5, y2 + text_height + 5)
         cv2.putText(image, text, text_org, font, font_scale, (255, 255, 255), thickness, lineType=cv2.LINE_AA)
 
-    def overlay_face_bbox(self, image, face_bbox, id, name="Not recognized"):
+        return image
+
+    def overlay_face_bbox(self, image, face_bbox, id, name="not recognized"):
         """
             Overlay the face bbox on the image
             If the face is not recognized yet, the box will be yellow
@@ -500,18 +415,25 @@ class faceIdentificationWithNav(Node):
         rect_x2 = x1 + text_width + 10   # padding
         rect_y2 = y2 + text_height + 15  # padding
 
-        if name == "Not recognized":    # yellow color
+        if name == "not recognized":    # yellow color
             color = (0, 255, 255)
-        elif name == "Unknown":         # orange color
+        elif name == "unknown":         # orange color
             color = (0, 165, 255)
         else:                           # green color
             color = (0, 255, 0)
-        cv2.rectangle(image, (x1, y1), (x2, y2), color, 2) # bbox
+        image = cv2.rectangle(image, (x1, y1), (x2, y2), color, 2) # bbox
         cv2.rectangle(image, (rect_x1, rect_y1), (rect_x2, rect_y2), color, -1) # text background
 
         # Draw text (black)
         text_org = (x1 + 5, y2 + text_height + 5)
         cv2.putText(image, text, text_org, font, font_scale, (0, 0, 0), thickness, lineType=cv2.LINE_AA)
+
+        return image
+    
+    def send_vlm_request(self, text, use_tts_output=False):
+        image = self.zed_client.grab_image()
+        response, _ = self.vlm_client.query(image=image, prompt=text, use_tts_output=use_tts_output)
+        return response
 
     """___HELPERS___"""
     def close(self):
@@ -529,52 +451,52 @@ class faceIdentificationWithNav(Node):
     def get_body_ids(self, bodies):
         return [body['id'] for body in bodies]
 
-class PatrolThread(QThread):
-    signal = pyqtSignal(object) # body_ids, image
-    def __init__(self, patrol_client):
+
+class UsertrackingThread(QThread):
+    signal = pyqtSignal(list, object) # body_ids, image
+    def __init__(self, usertracking_client):
         super().__init__()
-        self.client = patrol_client
+        self.client = usertracking_client
 
     def run(self):
-        cnt = 0
+        iterations = 0
         while True:
             # spin ros2 node
-            rclpy.spin_once(self.client, timeout_sec = 0.02)
-            # print("ros2 node spinning!")
-            # print("navigation status: ", self.client.navigation_status, "waypoint idx: ", self.client.current_waypoint_index/len(WAYPOINTS))
-            if self.client.timer_flag == True:
-                cnt += 1
-                if cnt > 15:
-                    self.signal.emit(self.client.image_display) # image
-
-
+            rclpy.spin_once(self.client)
+            if self.client.timer_flag:
+                self.client.timer_flag = False
+                iterations += 1
+            # print("navigation status: ", self.client.navigation_status)
+            # print("resume flag: ", self.client.navigation_resume_flag)
+            # print("iter:", iterations)
+            # print("current target: ", self.client.target_id)
+            if iterations > 30:
+                self.signal.emit(self.client.body_ids ,self.client.image_display) # image
+                iterations = 0
+            
 def main():
     app = QApplication(sys.argv)
-    rclpy.init()
+    # what's modified: all clients declared outside thread
     stt_client = STTClient()
     tts_client = TTSClient()
     zed_client = ZedClient()
-    face_recognition_client = FaceRecognitionClient()
-    patrol_client = faceIdentificationWithNav(
-        zed_client,
-        tts_client,
-        face_recognition_client,
-        use_navigation= True,
-        use_audio=True
-        )
-    patrol_thread = PatrolThread(patrol_client)
-    # vllm_client = VLLMClient(
-    #     api_url = "http://localhost:8000",
-    #     stt_client = stt_client,
-    #     tts_client = tts_client,
-    #     zed_client = zed_client
-    # )
-    # vlm_thread = VLLMThread(vllm_client)
+    rclpy.init()
+    usertracking_client = humanTracking(zed_client=zed_client, tts_client=tts_client)
+    usertracking_thread = UsertrackingThread(usertracking_client)
+    # what's modified: vllm client separated to another thread
+    vllm_client = VLLMClient(
+        api_url = "http://localhost:8000",
+        stt_client = stt_client,
+        tts_client = tts_client,
+        zed_client = zed_client
+    )
+    vlm_thread = VLLMThread(vllm_client)
+    # what's modified: vllm thread works!
     qt_widget = DemoQtWidget(
-        # vlm_thread=vlm_thread,
-        vlm_thread=None,
-        patrol_thread=patrol_thread,
-        usertracking_thread=None
+        vlm_thread=vlm_thread,
+        # vlm_thread=None,
+        patrol_thread=None,
+        usertracking_thread=usertracking_thread
     )
     qt_widget.show()
     app.exec_()

@@ -11,7 +11,10 @@ from typing import Tuple, Optional, Dict, Any
 
 import time
 import numpy as np
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root and zed-ros2-workspace to path
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(PROJECT_ROOT)
+sys.path.append(os.path.join(PROJECT_ROOT, 'zed-ros2-workspace'))
 from clients.stt_client import STTClient
 from clients.tts_client import TTSClient
 from clients.zed_client import ZedClient
@@ -20,7 +23,7 @@ from clients.zed_client import ZedClient
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QPixmap
-from gui.gui_threads import DemoQtWidget
+from gui_threads import DemoQtWidget
 
 
 instruction_two_sentence = "지금부터 모든 응답은 두 문장 이내로 해줘."

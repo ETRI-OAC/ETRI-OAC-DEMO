@@ -7,8 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="${SCRIPT_DIR}/../nav2/docker"
 CONTAINER_NAME="nav2"
 COMMAND="source /opt/ros/jazzy/setup.bash && \
-ros2 launch /root/workspace/zed-ros2-workspace/SLAM_Nav/launch/bringup_wo_map_launch.py \
-  params_file:=/root/workspace/zed-ros2-workspace/SLAM_Nav/config/following_params_outdoor.yaml"
+ros2 launch /root/workspace/SLAM_Nav/launch/bringup_wo_map_launch.py \
+  params_file:=/root/workspace/SLAM_Nav/config/following_params_outdoor.yaml"
 
 cd "$DOCKER_DIR"
 

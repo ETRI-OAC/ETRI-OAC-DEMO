@@ -5,7 +5,10 @@ import cv2
 
 import time
 import numpy as np
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root and zed-ros2-workspace to path
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(PROJECT_ROOT)
+sys.path.append(os.path.join(PROJECT_ROOT, 'zed-ros2-workspace'))
 from clients.zed_client import ZedClient
 from clients.tts_client import TTSClient
 from clients.face_recognition_client import FaceRecognitionClient

@@ -1,3 +1,6 @@
+from _20_vlm_gui import VLLMThread, VLLMClient
+from _21_patrol_gui import 
+
 # add higher directory path
 import sys
 import os
@@ -5,16 +8,16 @@ import cv2
 
 import time
 import numpy as np
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root and zed-ros2-workspace to path
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(PROJECT_ROOT)
+sys.path.append(os.path.join(PROJECT_ROOT, 'zed-ros2-workspace'))
 from clients.zed_client import ZedClient
-from clients.stt_client import STTClient
 from clients.tts_client import TTSClient
 from clients.face_recognition_client import FaceRecognitionClient
-# from clients.vlm_client import VLLMClient
+from clients.vlm_client import VLLMClient
 from zed_wrapper.body_tracking_visualizer import visualize_bodies_2d
 from utils.pid import PIDControllerClass
-
-from _20_vlm_gui import VLLMThread, VLLMClient
 
 import rclpy
 from rclpy.node import Node
@@ -25,12 +28,6 @@ from action_msgs.msg import GoalStatusArray
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
 
-# GUI
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
-from PyQt5.QtCore import QThread, pyqtSignal, Qt
-from PyQt5.QtGui import QPixmap
-from gui.gui_threads import DemoQtWidget
-
 WAYPOINTS = [((-2.88689, -1.29752, 0., 0., 0., -0.417859, 0.908512)), #(x,y,z,qx,qy,qz,qw)
             ((1.56717, -6.46273, 0., 0., 0., -0.418961, 0.908004)),
             ((3.58321, -8.42727, 0., 0., 0., -0.399719, 0.916638)),
@@ -38,47 +35,44 @@ WAYPOINTS = [((-2.88689, -1.29752, 0., 0., 0., -0.417859, 0.908512)), #(x,y,z,qx
 ]
 
 class humanTracking(Node):
-    def __init__(self, zed_client, tts_client):
+    def __init__(self):
         super().__init__('human_tracking')
-        self.zed_client = zed_client
-        self.tts_client = tts_client
-        # what's modified: vllm client separated to another thread
-        # self.vlm_client = VLLMClient(tts_client=self.tts_client)
+        self.zed_client = ZedClient()
+        self.tts_client = TTSClient()
+        self.vlm_client = VLLMClient(tts_client=self.tts_client)
         
         # Init face recognition
         self.face_recognition_client = FaceRecognitionClient()
         self.face_id_memory = {} # {id: name}
-        self.target_id = -1
+        self.target_id = 0
         self.face_recognition_cnt = 0
         self.not_unknown_cnt = 0
         self.not_looking_cnt = 0
         self.recognition_name = None
-        self.body_ids = []
 
         # Init pan-tilt
         self.pantilt_state = [0., -30.]
         self.pantilt_command = [0., -30.]
-        self.pid = PIDControllerClass(k_p= 30, k_d = 1, out_min=-30, out_max=30, dim=1, out_alpha=0.6)
+        self.pid = PIDControllerClass(k_p= 30, k_d = 1, out_min=-30, out_max=30, dim=1, out_alpha=0.5)
         self.pid.reset()
         self.center_cam_xy = np.array([self.zed_client.image_shape[1]/2, self.zed_client.image_shape[0]/2])
         self.t_s = time.time()
 
         # Init navigation
         self.navigation_status = "Waiting"
-        self.navigation_resume_flag = False # True
+        self.navigation_resume_flag = True
         self.current_waypoint_index = 0
         self.waypoints = WAYPOINTS
         self.stop = False
 
         # Init cv2 window
-        self.image_display = self.zed_client.grab_image()
         if self.zed_client.shm_image_block is None:
             print("[CLIENT] Image shared memory not available. Is the server running?")
             return
         self.image_width = self.zed_client.image_shape[1]
         self.image_height = self.zed_client.image_shape[0]
-        # cv2.namedWindow("ZED Client - Body Tracking", cv2.WINDOW_NORMAL)
-        # cv2.resizeWindow("ZED Client - Body Tracking", self.image_width, self.image_height)
+        cv2.namedWindow("ZED Client - Body Tracking", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("ZED Client - Body Tracking", self.image_width, self.image_height)
 
         # Init ROS2 Components
         self.pub_face_pose = self.create_publisher(PoseStamped, 'goal_update', 10)
@@ -87,13 +81,11 @@ class humanTracking(Node):
         self.subscription = self.create_subscription(GoalStatusArray,'/navigate_to_pose/_action/status',self.nav_status_callback, 1)
         self.main_timer = self.create_timer(0.02, self.main_timer_callback)
         self.reset_nav_timer = self.create_timer(1.0, self.reset_nav_timer_callback)
-        self.timer_flag = False
 
         # Init pan-tilt pose
         self.pantilt_command = [0., -30.]
         for _ in range(30):
             self.publish_pantilt_command()
-            rclpy.spin_once(self)
             time.sleep(0.02)
 
     """___MAIN LOOP___"""
@@ -106,54 +98,41 @@ class humanTracking(Node):
 
         # Update Image and Bodies from ZED
         image = self.zed_client.grab_image()
-        self.image_display = image.copy()
+        image_display = image.copy()
         bodies = self.zed_client.grab_bodies()
 
         if bodies is not None and len(bodies) > 0:
-            self.image_display = self.overlay_bodies_on_image(self.image_display, bodies)
-            self.body_ids = self.get_body_ids(bodies)
-            # what's modified: exception for 0 index -> disabled
-            # if self.target_id not in self.body_ids: # No target id found
-            #     self.target_id = self.body_ids[0]
+            image_display = self.overlay_bodies_on_image(image_display, bodies)
+            body_ids = self.get_body_ids(bodies)
+            if self.target_id not in body_ids: # No target id found
+                self.target_id = body_ids[0]
+            # target_index = body_ids.index(self.target_id)
             for body in bodies:
                 body_id = body['id']
-                _, bbox = self.crop_face(self.image_display, body)
+                _, bbox = self.crop_face(image_display, body)
                 if body_id == self.target_id:
                     self.publish_face_pose(body)
                     self.move_pantilt(body)
                     if bbox is not None:
-                        self.image_display = self.overlay_face_bbox(self.image_display, bbox, body_id, name="tracking target")
+                        image_display = self.overlay_face_bbox(image_display, bbox, body_id, name="tracking target")
                 elif bbox is not None:
-                    self.image_display = self.overlay_face_bbox(self.image_display, bbox, body_id, name="unknown")
-        self.timer_flag = True
-        # self.imshow(image_display)
+                    image_display = self.overlay_face_bbox(image_display, bbox, body_id, name="unknown")
+                
+        self.imshow(image_display)
     
     def reset_nav_timer_callback(self):
         """
-        CHANGED
-            - this function handles every start of navigation 
-            - Initializes very first navigation 
-            - if cannceled -> resume with checking resume flag 
+            The goal_update needs navigation goal to be sent periodically to keep the navigation goal alive.
         """
-        if self.navigation_status != "Navigating" and self.navigation_resume_flag == True:
-            if self.target_id in self.body_ids:
-                print("Initializing Navigation to target id: ", self.target_id)
-                self.pantilt_command = [0., -30.]
-                self.publish_pantilt_command()
-                self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
-            else:
-                print("No target id found in the scene. Cannot start navigation.")
-            
-            # test
-        #     print("Initializing Navigation to target id: ", self.target_id)
-        #     self.pantilt_command = [0., -30.]
-        #     self.publish_pantilt_command()
-        #     self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
-        #     self.navigatioin_resume_flag = False
-        #     self.navigation_resume_flag = False # wait until target id is found to start navigation
-        # elif self.navigation_status != "Navigating" and self.navigation_resume_flag == False:
-        #     # no resume, cancelled, just standing 
-        #     pass
+        # print(f"[VLM] Sending request to VLM")
+        # response = self.send_vlm_request("What objects are on the image? Respond only five items names in Korean sentence.", use_tts_output=True)
+        # response = self.send_vlm_request("Can you see any dangerous objects? Respond in a sentence in Korean.", use_tts_output=True)
+        # print(f"[VLM] Response: {response['choices'][0]['message']['content']}")
+
+        if self.navigation_status != "Navigating":
+            self.pantilt_command = [0., -30.]
+            self.publish_pantilt_command()
+            self.send_navigation_goal((0.,0.,0.,0.,0.,0.,1.), frame_id='base_footprint')
 
     """___NAVIGATION FUNCTIONS___"""
     def send_navigation_goal(self, goal, frame_id='map'):
@@ -448,56 +427,19 @@ class humanTracking(Node):
     def get_body_ids(self, bodies):
         return [body['id'] for body in bodies]
 
-
-class UsertrackingThread(QThread):
-    signal = pyqtSignal(list, object) # body_ids, image
-    def __init__(self, usertracking_client):
-        super().__init__()
-        self.client = usertracking_client
-
-    def run(self):
-        iterations = 0
-        while True:
-            # spin ros2 node
-            rclpy.spin_once(self.client)
-            if self.client.timer_flag:
-                self.client.timer_flag = False
-                iterations += 1
-            # print("navigation status: ", self.client.navigation_status)
-            # print("resume flag: ", self.client.navigation_resume_flag)
-            # print("iter:", iterations)
-            # print("current target: ", self.client.target_id)
-            if iterations > 30:
-                self.signal.emit(self.client.body_ids ,self.client.image_display) # image
-                iterations = 0
-            
 def main():
-    app = QApplication(sys.argv)
-    # what's modified: all clients declared outside thread
-    stt_client = STTClient()
-    tts_client = TTSClient()
-    zed_client = ZedClient()
     rclpy.init()
-    usertracking_client = humanTracking(zed_client=zed_client, tts_client=tts_client)
-    usertracking_thread = UsertrackingThread(usertracking_client)
-    # what's modified: vllm client separated to another thread
-    vllm_client = VLLMClient(
-        api_url = "http://localhost:8000",
-        stt_client = stt_client,
-        tts_client = tts_client,
-        zed_client = zed_client
-    )
-    vlm_thread = VLLMThread(vllm_client)
-    # what's modified: vllm thread works!
-    qt_widget = DemoQtWidget(
-        vlm_thread=vlm_thread,
-        # vlm_thread=None,
-        patrol_thread=None,
-        usertracking_thread=usertracking_thread
-    )
-    qt_widget.show()
-    app.exec_()
-    rclpy.shutdown()
+    human_tracking_demo = humanTracking()
+    try:
+        rclpy.spin(human_tracking_demo)
+    except KeyboardInterrupt:
+        print("Keyboard interrupt")
+        human_tracking_demo.cancel_nav2_navigation()
+    finally:
+        human_tracking_demo.cancel_nav2_navigation()
+        human_tracking_demo.close()
+        rclpy.shutdown()
+        print("Face tracking closed")
 
 if __name__ == "__main__":
     main()

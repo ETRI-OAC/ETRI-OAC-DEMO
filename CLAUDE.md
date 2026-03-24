@@ -48,7 +48,7 @@ Lock protocol: writer sets lock=1 before writing, reader busy-waits with 1ms sle
 | `pantilt_state` | — | Pan-tilt servo position feedback |
 | `pantilt_command` | — | Pan-tilt target position |
 
-### CANINE Middleware (`openpath_CANINE_middleware/python_scripts/`)
+### CANINE Middleware (`openpath_CANINE_middleware/python_scripts/` (project root))
 
 Three-thread architecture in `main.py`:
 1. **rosCommunicationThread** — ROS 2 node subscribing to `canine_states`, publishing `canine_command`
@@ -96,20 +96,20 @@ python face-recognition/face_recognition_client.py
 ```bash
 # Indoor patrol (requires pre-built map + localization init)
 cd zed-ros2-workspace && ./run_nav2_indoor.sh
-cd zed-ros2-workspace/test_scripts && python _21_patrol_gui.py
+cd demo && python _21_patrol_gui.py
 
 # Outdoor user tracking (no map needed)
 cd zed-ros2-workspace && ./run_nav2_outdoor.sh
-cd zed-ros2-workspace/test_scripts && python _22_usertracking_gui.py
+cd demo && python _22_usertracking_gui.py
 ```
 
 ## Key Code Locations
 
 - **Client libraries** (`zed-ros2-workspace/clients/`): Shared Python clients used by demo scripts to talk to each service — `zed_client.py` (shared memory), `vlm_client.py`, `tts_client.py`, `stt_client.py`, `face_recognition_client.py`
-- **Demo scripts** (`zed-ros2-workspace/test_scripts/`): PyQt5 GUI applications (`_20_*` through `_22_*`, `23_*`) and incremental test scripts (`1_*` through `9_*`)
+- **Demo scripts** (`demo/`): PyQt5 GUI applications (`_20_*` through `_22_*`, `23_*`) and incremental test scripts (`1_*` through `9_*`)
 - **GUI framework** (`zed-ros2-workspace/gui/`): `gui.py` (PyQt5 layout), `gui_threads.py` (QThread workers for non-blocking service calls)
-- **Nav2 config** (`zed-ros2-workspace/SLAM_Nav/`): `config/nav2_params.yaml` (AMCL omni-directional model), `config/following_params.yaml` + `config/bt_following.xml` (outdoor following behavior tree), `map/map_etri.yaml` (saved indoor map)
-- **Twist-to-CANINE bridge** (`zed-ros2-workspace/SLAM_Nav/repub_twist2canine.py`): Converts Nav2 `cmd_vel` Twist messages to CANINECommand (linear vx/vy + angular ωz)
+- **Nav2 config** (`SLAM_Nav/`): `config/nav2_params.yaml` (AMCL omni-directional model), `config/following_params.yaml` + `config/bt_following.xml` (outdoor following behavior tree), `map/map_etri.yaml` (saved indoor map)
+- **Twist-to-CANINE bridge** (`SLAM_Nav/repub_twist2canine.py`): Converts Nav2 `cmd_vel` Twist messages to CANINECommand (linear vx/vy + angular ωz)
 - **Camera server** (`zed-ros2-workspace/oak_wrapper/oak_server.py`): Opens OAK-D Pro W camera via DepthAI, runs on-device MoveNet pose estimation, writes frames + body tracking to `/dev/shm`
 - **Camera utilities** (`zed-ros2-workspace/oak_wrapper/`): `person_tracker.py` (IoU-based SORT tracker for persistent body IDs), `head_pose_estimator.py` (geometric head orientation + bbox from COCO keypoints)
 - **PID utilities** (`zed-ros2-workspace/utils/pid.py`): PID controller used for real-time pan-tilt face tracking
@@ -118,7 +118,7 @@ cd zed-ros2-workspace/test_scripts && python _22_usertracking_gui.py
 
 ## Demo Script Progression
 
-Test scripts in `zed-ros2-workspace/test_scripts/` build incrementally:
+Test scripts in `demo/` build incrementally:
 - `1_middleware.sh` → CANINE middleware connection
 - `3_*` → Pan-tilt servo test
 - `4_*` → ZED camera capture
@@ -175,7 +175,7 @@ python3 -m venv ~/opr-venv && source ~/opr-venv/bin/activate
 - All containers mount project root to `/root/workspace/` — code edits on host are live inside containers
 - Nav2 uses omni-directional motion model (`nav2_amcl::OmniMotionModel`) since the quadruped can strafe
 - Korean TTS model files are stored via Git LFS (`tts-stt/tts_model/`); run `git lfs pull` after clone
-- SLAM map building: `docs/slam-map.md` (full procedure) or `zed-ros2-workspace/SLAM_Nav/commands.txt` (quick reference)
+- SLAM map building: `docs/slam-map.md` (full procedure) or `SLAM_Nav/commands.txt` (quick reference)
 - Old Jetson/L4T Dockerfile kept as `Dockerfile.l4t-humble` for reference; active build uses `Dockerfile.ubuntu-jazzy`
 - Old ZED server kept in `zed_wrapper/` for reference; active camera server is `oak_wrapper/oak_server.py`
 - Body tracking uses YOLOv8m-pose (COCO-17) on Hailo-10 accelerator; OAK-D Pro W provides camera frames only (no on-device NN); keypoint index 0 = NOSE (used for pan-tilt); head orientation estimated geometrically from eye/ear keypoints

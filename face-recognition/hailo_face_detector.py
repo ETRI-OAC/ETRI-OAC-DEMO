@@ -33,7 +33,7 @@ class HailoFaceDetector:
 
         if use_server:
             # Use centralized inference server
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hailo-inference"))
             from hailo_inference_client import HailoInferenceClient
             self._client = HailoInferenceClient(host=server_host, port=server_port)
             print(f"[HAILO-FACE] Using inference server at {server_host}:{server_port}")
