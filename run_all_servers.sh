@@ -22,7 +22,7 @@ fi
 echo "[*] Cleaning up previous session..."
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
-for c in base-zed_ros2_env-1 hailo-inference rplidar nav2 face-recognition base-tts-stt-1 vlm-server; do
+for c in base-zed_ros2_env-1 hailo-inference rplidar nav2 demo-gui face-recognition base-tts-stt-1 vlm-server; do
     docker kill "$c" 2>/dev/null || true
 done
 sleep 1

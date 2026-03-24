@@ -39,4 +39,7 @@ zed-ros2-workspace/zed_wrapper/core*
 hailo_models/
 
 # === Build/runtime caches ===
-**/.cache/vlm/models/
+**/.cache/
+
+# === VLM model files (~4GB, downloaded at Docker build time) ===
+vlm/models/

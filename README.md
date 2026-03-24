@@ -10,7 +10,10 @@ graph TB
         subgraph OAK["OAK-ROS2 Container"]
             CAM["OAK-D Pro W<br/>DepthAI v3.5<br/>RGB 1920x1080 + Stereo Depth"]
             PT["Dynamixel Pan-Tilt<br/>PID 얼굴 추적"]
-            DEMO["데모 스크립트<br/>PyQt5 GUI<br/>순찰 / 사용자추적"]
+        end
+
+        subgraph DEMO_C["Demo GUI Container"]
+            DEMO["데모 스크립트<br/>PyQt5 GUI<br/>순찰 / 사용자추적<br/>ROS 2 Client"]
         end
 
         subgraph HAILO_C["Hailo Inference Container"]
@@ -68,7 +71,7 @@ graph TB
     style VLM_C fill:#d5f5e3,stroke:#27ae60,stroke-dasharray: 5 5
     style TTS_C fill:#fdebd0,stroke:#e67e22
     style FACE_C fill:#e8daef,stroke:#8e44ad
-    style DEMO fill:#f9e79f,stroke:#f39c12,stroke-width:2px
+    style DEMO_C fill:#f9e79f,stroke:#f39c12,stroke-width:2px
 ```
 
 ---

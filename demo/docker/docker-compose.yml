@@ -1,0 +1,23 @@
+services:
+  demo:
+    container_name: demo-gui
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: demo-gui:latest
+    volumes:
+      - "../../:/root/workspace"
+      - "/tmp/.X11-unix:/tmp/.X11-unix"
+      - "/dev:/dev"
+    privileged: true
+    network_mode: host
+    ipc: "host"
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - QT_X11_NO_MITSHM=1
+    stdin_open: true
+    tty: true
+    command: ["sleep", "infinity"]
+    restart: unless-stopped
