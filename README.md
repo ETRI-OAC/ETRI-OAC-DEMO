@@ -53,11 +53,11 @@ graph TB
     CAM -->|"TCP 추론 요청"| HAILO_SRV
     FACE -->|"TCP SCRFD 요청"| HAILO_SRV
     SHM -->|"이미지 + 바디"| DEMO
-    DEMO -->|"음성 질문"| STT
-    DEMO -->|"음성 답변"| TTS
-    DEMO -->|"이미지 + 질문"| VLM
-    DEMO -->|"얼굴 이미지"| FACE
-    DEMO -->|"목표 좌표"| NAV
+    DEMO <-->|"오디오 → 텍스트"| STT
+    DEMO -->|"텍스트 → 음성 출력"| TTS
+    DEMO <-->|"이미지+질문 → 답변"| VLM
+    DEMO <-->|"얼굴 이미지 → 이름"| FACE
+    DEMO <-->|"목표 좌표 → 상태"| NAV
     MW <-->|"ROS 2 Topics<br/>canine_states / canine_command"| ROBOT
     LIDAR -->|"scan (ROS 2)"| NAV
     NAV -->|"cmd_vel (ROS 2)"| MW
