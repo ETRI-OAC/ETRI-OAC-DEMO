@@ -8,50 +8,67 @@ graph TB
         direction TB
 
         subgraph OAK["OAK-ROS2 Container"]
-            CAM["OAK-D Pro W<br/>카메라 + 깊이"]
-            HAILO_SRV["Hailo Inference Server<br/>TCP :8003"]
-            NAV["Nav2 / AMCL<br/>자율 주행"]
-            MW["CANINE Middleware<br/>로봇 제어"]
-            LIDAR["RPLidar"]
-            PT["Pan-Tilt 서보"]
+            CAM["OAK-D Pro W<br/>DepthAI v3.5<br/>RGB 1920x1080 + Stereo Depth"]
+            PT["Dynamixel Pan-Tilt<br/>PID 얼굴 추적"]
+            DEMO["데모 스크립트<br/>PyQt5 GUI<br/>순찰 / 사용자추적"]
         end
 
-        subgraph VLM_C["VLM Container"]
-            VLM["Gemma-3-4b-it-mm<br/>Ryzen AI NPU / CPU<br/>REST :8000"]
+        subgraph HAILO_C["Hailo Inference Container"]
+            HAILO_SRV["Hailo Inference Server :8003<br/>YOLOv8m-pose (포즈, 28MB HEF)<br/>SCRFD-10g (얼굴검출, 4.5MB HEF)<br/>Hailo-10 M.2"]
+        end
+
+        subgraph NAV_C["Nav2 Container"]
+            NAV["Nav2 / AMCL<br/>Omni-directional 모델<br/>자율 주행"]
+        end
+
+        subgraph LIDAR_C["RPLidar Container"]
+            LIDAR["RPLidar<br/>장애물 감지<br/>USB Serial"]
+        end
+
+        MW["CANINE Middleware<br/>로봇 제어 (50Hz)<br/>ROS 2 + Dynamixel"]
+
+        subgraph VLM_C["VLM Container (비활성)"]
+            VLM["Gemma-3-4b-it-mm<br/>onnxruntime-genai<br/>Ryzen AI NPU<br/>REST :8000"]
         end
 
         subgraph TTS_C["TTS-STT Container"]
-            STT["Whisper STT<br/>CPU / Hailo[1]<br/>REST :8001"]
-            TTS["Sherpa-ONNX TTS<br/>CPU<br/>REST :8002"]
+            STT["faster-whisper small<br/>CPU (Hailo 1개) / Hailo[1] (2개)<br/>REST :8001"]
+            TTS["Sherpa-ONNX VITS<br/>한국어 KSS 모델<br/>CPU<br/>REST :8002"]
         end
 
         subgraph FACE_C["Face Recognition Container"]
-            FACE["InsightFace ArcFace<br/>검출: Hailo (via :8003)<br/>임베딩: CPU<br/>REST :7999"]
+            FACE["검출: SCRFD-10g via Hailo :8003<br/>임베딩: ArcFace w600k_r50 (CPU)<br/>InsightFace buffalo_l<br/>REST :7999"]
         end
 
         SHM["/dev/shm<br/>zed_image_shm + zed_body_shm"]
     end
 
-    ROBOT["🦿 CANINE 4족 로봇"]
+    ROBOT["CANINE 4족 로봇"]
 
     CAM -->|"BGR 프레임"| SHM
-    HAILO_SRV -->|"포즈 결과"| SHM
+    HAILO_SRV -->|"포즈 17 keypoints"| SHM
     CAM -->|"TCP 추론 요청"| HAILO_SRV
-    FACE -->|"TCP 추론 요청"| HAILO_SRV
-    SHM -->|"이미지 + 바디"| NAV
-    SHM -->|"이미지"| VLM
-    SHM -->|"이미지"| FACE
+    FACE -->|"TCP SCRFD 요청"| HAILO_SRV
+    SHM -->|"이미지 + 바디"| DEMO
+    DEMO -->|"음성 질문"| STT
+    DEMO -->|"음성 답변"| TTS
+    DEMO -->|"이미지 + 질문"| VLM
+    DEMO -->|"얼굴 이미지"| FACE
+    DEMO -->|"목표 좌표"| NAV
     MW <-->|"ROS 2 Topics<br/>canine_states / canine_command"| ROBOT
-    LIDAR -->|"scan"| NAV
-    NAV -->|"cmd_vel"| MW
+    LIDAR -->|"scan (ROS 2)"| NAV
+    NAV -->|"cmd_vel (ROS 2)"| MW
     PT -->|"pan-tilt 추적"| CAM
 
     style HOST fill:#f0f0f0,stroke:#333
     style OAK fill:#d4e6f1,stroke:#2980b9
-    style VLM_C fill:#d5f5e3,stroke:#27ae60
+    style HAILO_C fill:#aed6f1,stroke:#2471a3,stroke-width:2px
+    style NAV_C fill:#d4efdf,stroke:#1e8449
+    style LIDAR_C fill:#d4efdf,stroke:#1e8449
+    style VLM_C fill:#d5f5e3,stroke:#27ae60,stroke-dasharray: 5 5
     style TTS_C fill:#fdebd0,stroke:#e67e22
     style FACE_C fill:#e8daef,stroke:#8e44ad
-    style HAILO_SRV fill:#aed6f1,stroke:#2471a3,stroke-width:2px
+    style DEMO fill:#f9e79f,stroke:#f39c12,stroke-width:2px
 ```
 
 ---

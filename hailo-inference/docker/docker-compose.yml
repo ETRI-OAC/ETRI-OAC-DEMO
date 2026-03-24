@@ -1,0 +1,17 @@
+services:
+  hailo-inference:
+    container_name: hailo-inference
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hailo-inference:latest
+    volumes:
+      - "../../:/root/workspace"
+      - "/dev:/dev"
+    privileged: true
+    network_mode: host
+    ipc: "host"
+    stdin_open: true
+    tty: true
+    command: ["sleep", "infinity"]
+    restart: unless-stopped

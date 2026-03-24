@@ -1,13 +1,13 @@
 #!/bin/bash
-# Run hailo_inference_server.py inside the OAK-ROS2 container.
+# Run hailo_inference_server.py inside the Hailo Inference container.
 # This server owns the Hailo device and serves inference requests to
 # oak_server (pose) and face_recognition (SCRFD) via TCP port 8003.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DOCKER_DIR="${SCRIPT_DIR}/zed-ros2-workspace/docker"
-CONTAINER_NAME="base-zed_ros2_env-1"
+DOCKER_DIR="${SCRIPT_DIR}/hailo-inference/docker"
+CONTAINER_NAME="hailo-inference"
 
 COMMAND="cd /root/workspace && python3 hailo_inference_server.py --port 8003"
 

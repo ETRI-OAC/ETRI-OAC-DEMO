@@ -1,0 +1,18 @@
+services:
+  nav2:
+    container_name: nav2
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nav2-jazzy:latest
+    volumes:
+      - "../../:/root/workspace"
+    network_mode: host
+    ipc: "host"
+    environment:
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    stdin_open: true
+    tty: true
+    command: ["sleep", "infinity"]
+    restart: unless-stopped

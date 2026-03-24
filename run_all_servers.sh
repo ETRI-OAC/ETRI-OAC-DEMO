@@ -18,24 +18,39 @@ if ! command -v docker &>/dev/null; then
     exit 1
 fi
 
-# Kill existing session so we start fresh
+# --- Cleanup: kill previous session and containers ---
+echo "[*] Cleaning up previous session..."
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
-# Create session with first server in pane 0 — Hailo inference server must start first
-# (oak_server and face_recognition connect to it as clients)
+for c in base-zed_ros2_env-1 hailo-inference rplidar nav2 face-recognition base-tts-stt-1 vlm-server; do
+    docker kill "$c" 2>/dev/null || true
+done
+sleep 1
+
+echo "[*] Cleanup done."
+
+# --- Launch servers in tmux panes ---
+# Pane 0: Hailo inference server (must start first — oak_server & face_recognition depend on it)
 tmux new-session -d -s "$SESSION" -n "all" "cd '$REPO_ROOT' && ./run_hailo_server.sh; exec bash"
-# Wait for Hailo server to initialize before starting dependent services
 sleep 3
-# Split into panes and run each server (pane 0 already has Hailo server)
-# VLM disabled — SDK 1.7.0 genai doesn't support Krackan NPU yet
-# tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./vlm/run_vlm_server.sh; exec bash"
+
+# Pane 1: STT
 tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./tts-stt/run_stt_server.sh; exec bash"
+# Pane 2: TTS
 tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./tts-stt/run_tts_server.sh; exec bash"
+# Pane 3: Face Recognition
 tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./face-recognition/run_face_recognition_server.sh; exec bash"
+# Pane 4: CANINE Middleware
 tmux split-window -v -t "$SESSION.0" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_middleware.sh; exec bash"
-tmux split-window -v -t "$SESSION.5" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_lidar.sh; exec bash"
-tmux split-window -v -t "$SESSION.6" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_pantilt.sh; exec bash"
-tmux split-window -v -t "$SESSION.7" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_oak_server.sh; exec bash"
+# Pane 5: RPLidar
+tmux split-window -v -t "$SESSION.4" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_lidar.sh; exec bash"
+# Pane 6: Pan-Tilt
+tmux split-window -v -t "$SESSION.5" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_pantilt.sh; exec bash"
+# Pane 7: OAK-D Camera + Pose
+tmux split-window -v -t "$SESSION.6" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_oak_server.sh; exec bash"
+
+# VLM disabled — SDK 1.7.0 genai doesn't support Krackan NPU yet
+# Nav2 launched separately: ./zed-ros2-workspace/run_nav2_indoor.sh or run_nav2_outdoor.sh
 
 # Even out pane sizes
 tmux select-layout -t "$SESSION" tiled

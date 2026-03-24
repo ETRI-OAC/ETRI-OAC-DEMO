@@ -25,7 +25,7 @@ ENV TZ=Europe/Paris
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone && \
   apt-get update && \
   apt-get install --yes lsb-release wget less udev sudo build-essential cmake python3 python3-dev python3-pip python3-wheel python3-serial \
-  git jq libpq-dev zstd usbutils python3-opencv && \
+  python-is-python3 git jq libpq-dev zstd usbutils python3-opencv && \
   rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update -y || true && \
@@ -55,7 +55,8 @@ RUN wget https://github.com/ros-drivers/nmea_msgs/archive/refs/tags/${NMEA_MSGS_
 
 # Install cython, numpy, opencv
 RUN python3 -m pip install --break-system-packages --upgrade cython && \
-    python3 -m pip install --break-system-packages --ignore-installed opencv-contrib-python numpy==1.26.4
+    python3 -m pip install --break-system-packages --ignore-installed opencv-python-headless numpy==1.26.4 && \
+    python3 -m pip install --break-system-packages PyQt5 requests
 
 # Build the ROS2 packages
 WORKDIR /root/ros2_ws
@@ -66,36 +67,15 @@ RUN /bin/bash -c "source /opt/ros/$ROS_DISTRO/setup.bash && \
   --cmake-args ' -DCMAKE_BUILD_TYPE=Release' \
   ' --no-warn-unused-cli' "
 
-# Nav2 installation (Redundant key setup removed)
-RUN apt-get update && \
-   apt-get install -y --no-install-recommends \
-   ros-jazzy-navigation2 \
-   ros-jazzy-nav2-bringup && \
-   rm -rf /var/lib/apt/lists/*
+# Nav2 and HailoRT moved to dedicated containers (nav2/, hailo-inference/).
+# OAK-ROS2 talks to Hailo via TCP client (hailo_inference_client.py, no HailoRT needed).
+# Nav2 runs in its own container with CycloneDDS.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-jazzy-rmw-cyclonedds-cpp \
+    && rm -rf /var/lib/apt/lists/*
 
 # OAK-D Pro W + client dependencies for demo/test scripts
 RUN pip install --break-system-packages depthai requests
-
-# Hailo model auto-downloader + pre-cache HEF models at build time
-# Cached to /root/hailo_models_cache/ (outside /root/workspace volume mount)
-# entrypoint.sh copies to /root/workspace/hailo_models/ at container startup
-RUN mkdir -p /root/hailo_models_cache && \
-    hailo model-zoo download --model yolov8m_pose --hw-arch hailo10h 2>/dev/null && \
-    hailo model-zoo download --model scrfd_10g    --hw-arch hailo10h 2>/dev/null && \
-    find / -name "yolov8m_pose.hef" -o -name "scrfd_10g.hef" 2>/dev/null \
-    | xargs -I{} cp {} /root/hailo_models_cache/ 2>/dev/null || \
-    echo "[HAILO] Pre-download failed — will download at runtime"
-
-# Hailo-10
-RUN --mount=type=bind,source=.,target=/ctx \
-    if ls /ctx/hailort*.deb 1>/dev/null 2>&1; then \
-        cp /ctx/hailort*.deb /tmp/ && \
-        dpkg -i /tmp/hailort*.deb || apt-get install -f -y && \
-        rm -f /tmp/hailort*.deb && \
-        echo "[HAILO] HailoRT installed"; \
-    else \
-        echo "[HAILO] No hailort .deb found, skipping (camera-only mode)"; \
-    fi
 
 # Third party
 WORKDIR /root/third_party

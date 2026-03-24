@@ -1,0 +1,20 @@
+services:
+  rplidar:
+    container_name: rplidar
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rplidar-jazzy:latest
+    volumes:
+      - "../../:/root/workspace"
+      - "/dev:/dev"
+    privileged: true
+    network_mode: host
+    ipc: "host"
+    environment:
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    stdin_open: true
+    tty: true
+    command: ["sleep", "infinity"]
+    restart: unless-stopped
