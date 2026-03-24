@@ -75,16 +75,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
 
-# OAK-D Pro W + client dependencies for demo/test scripts
+# OAK-D Pro W camera driver
 RUN pip install --break-system-packages depthai requests
 
-# Third party
-WORKDIR /root/third_party
-RUN git clone https://github.com/ROBOTIS-GIT/DynamixelSDK.git
-WORKDIR /root/third_party/DynamixelSDK/python
-RUN pip install --break-system-packages . --no-build-isolation
-
-# ffmpeg, sounddevice, pydub moved to demo-gui container.
+# DynamixelSDK, PyQt5, sounddevice, pydub → demo-gui container.
 
 RUN mkdir -p /root/workspace
 RUN git config --global --add safe.directory /root/workspace
