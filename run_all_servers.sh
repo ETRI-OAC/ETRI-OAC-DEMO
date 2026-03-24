@@ -21,16 +21,21 @@ fi
 # Kill existing session so we start fresh
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
-# Create session with first server in pane 0
-tmux new-session -d -s "$SESSION" -n "all" "cd '$REPO_ROOT' && ./vlm/run_vlm_server.sh; exec bash"
-# Split into panes and run each server (pane 0 already has VLM)
+# Create session with first server in pane 0 — Hailo inference server must start first
+# (oak_server and face_recognition connect to it as clients)
+tmux new-session -d -s "$SESSION" -n "all" "cd '$REPO_ROOT' && ./run_hailo_server.sh; exec bash"
+# Wait for Hailo server to initialize before starting dependent services
+sleep 3
+# Split into panes and run each server (pane 0 already has Hailo server)
+# VLM disabled — SDK 1.7.0 genai doesn't support Krackan NPU yet
+# tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./vlm/run_vlm_server.sh; exec bash"
 tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./tts-stt/run_stt_server.sh; exec bash"
 tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./tts-stt/run_tts_server.sh; exec bash"
 tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./face-recognition/run_face_recognition_server.sh; exec bash"
 tmux split-window -v -t "$SESSION.0" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_middleware.sh; exec bash"
-tmux split-window -v -t "$SESSION.4" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_lidar.sh; exec bash"
-tmux split-window -v -t "$SESSION.5" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_pantilt.sh; exec bash"
-tmux split-window -v -t "$SESSION.6" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_oak_server.sh; exec bash"
+tmux split-window -v -t "$SESSION.5" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_lidar.sh; exec bash"
+tmux split-window -v -t "$SESSION.6" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_pantilt.sh; exec bash"
+tmux split-window -v -t "$SESSION.7" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_oak_server.sh; exec bash"
 
 # Even out pane sizes
 tmux select-layout -t "$SESSION" tiled

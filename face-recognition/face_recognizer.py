@@ -26,7 +26,10 @@ class FaceRecognizer:
                  ctx_id: int = 0,
                  hailo_hef_path: Optional[str] = None,
                  hailo_device_id: Optional[str] = None,
-                 hailo_device_index: int = 0):
+                 hailo_device_index: int = 0,
+                 use_hailo_server: bool = False,
+                 hailo_server_host: str = "localhost",
+                 hailo_server_port: int = 8003):
         """
         Initialize the face recognizer
 
@@ -41,6 +44,10 @@ class FaceRecognizer:
             hailo_device_index: Which Hailo device to use when multiple
                                present (0=first, 1=second). Ignored if
                                hailo_device_id is specified.
+            use_hailo_server: Use centralized hailo_inference_server instead
+                             of direct VDevice access.
+            hailo_server_host: Inference server host (default: localhost).
+            hailo_server_port: Inference server port (default: 8003).
         """
         self.threshold = similarity_threshold
         self.hailo_detector = None
@@ -53,30 +60,44 @@ class FaceRecognizer:
         self.app.prepare(ctx_id=ctx_id, det_size=(640, 640))
 
         # Use Hailo-10 for face detection if available
-        # Auto-downloads SCRFD HEF and auto-detects device
-        if hailo_hef_path is None:
-            try:
-                from hailo_utils import is_hailo_available
-                if is_hailo_available():
-                    from hailo_model_downloader import get_hef_path
-                    hailo_hef_path = get_hef_path("scrfd_10g")
-            except ImportError:
-                pass
-
-        if hailo_hef_path:
+        if use_hailo_server:
+            # Use centralized inference server (shares Hailo device)
             try:
                 from hailo_face_detector import HailoFaceDetector
-                from hailo_utils import detect_hailo_device
-                if hailo_device_id is None:
-                    hailo_device_id = detect_hailo_device(device_index=hailo_device_index)
                 self.hailo_detector = HailoFaceDetector(
-                    hef_path=hailo_hef_path,
-                    device_id=hailo_device_id,
+                    use_server=True,
+                    server_host=hailo_server_host,
+                    server_port=hailo_server_port,
                 )
-                print(f"[FaceRecognizer] Face detection: Hailo-10")
+                print("[FaceRecognizer] Face detection: Hailo-10 (via inference server)")
             except Exception as e:
-                print(f"[FaceRecognizer] Hailo init failed ({e}), falling back to CPU")
+                print(f"[FaceRecognizer] Hailo server init failed ({e}), falling back to CPU")
                 self.hailo_detector = None
+        else:
+            # Direct VDevice access
+            if hailo_hef_path is None:
+                try:
+                    from hailo_utils import is_hailo_available
+                    if is_hailo_available():
+                        from hailo_model_downloader import get_hef_path
+                        hailo_hef_path = get_hef_path("scrfd_10g")
+                except ImportError:
+                    pass
+
+            if hailo_hef_path:
+                try:
+                    from hailo_face_detector import HailoFaceDetector
+                    from hailo_utils import detect_hailo_device
+                    if hailo_device_id is None:
+                        hailo_device_id = detect_hailo_device(device_index=hailo_device_index)
+                    self.hailo_detector = HailoFaceDetector(
+                        hef_path=hailo_hef_path,
+                        device_id=hailo_device_id,
+                    )
+                    print("[FaceRecognizer] Face detection: Hailo-10 (direct)")
+                except Exception as e:
+                    print(f"[FaceRecognizer] Hailo init failed ({e}), falling back to CPU")
+                    self.hailo_detector = None
 
         det_backend = "Hailo-10" if self.hailo_detector else "CPU"
         print(f"[FaceRecognizer] Initialized: model={model_name}, "

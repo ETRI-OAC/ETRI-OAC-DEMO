@@ -8,16 +8,18 @@ services:
     volumes:
       - "../../:/root/workspace"
       - "/opt/ryzenai:/opt/ryzenai:ro"
+      - "/opt/xilinx:/opt/xilinx:ro"
       - "/lib/firmware/amdnpu:/lib/firmware/amdnpu:ro"
     privileged: true
     network_mode: host
     ipc: "host"
     command: >
       python3 /root/workspace/vlm/vlm_server.py
-      --model-dir /root/workspace/vlm/models/Gemma-3-4b-it-mm-onnx-ryzenai-npu
+      --model-dir ${VLM_MODEL_DIR:-/root/models/Gemma-3-4b-it-mm-onnx-ryzenai-npu}
       --port 8000
     environment:
       - TRANSFORMERS_OFFLINE=1
       - HF_DATASETS_OFFLINE=1
       - XLNX_VART_FIRMWARE=/opt/ryzenai/share/xdna/vaip_config.json
+      - LD_LIBRARY_PATH=/opt/ryzenai/venv/deployment/lib:/opt/ryzenai/venv/lib/python3.12/site-packages/onnxruntime_genai:/opt/xilinx/xrt/lib
     restart: unless-stopped

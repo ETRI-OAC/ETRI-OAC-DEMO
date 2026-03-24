@@ -11,6 +11,7 @@ zed_client.py and all demo scripts work without modification.
 """
 
 import struct
+import sys
 import time
 import os
 from typing import Tuple, Optional, List
@@ -75,7 +76,7 @@ def allocate_size(width: int, height: int, channels: int, bytes_per_channel: int
 # Hailo-10 pose estimator  (HailoRT 5.x InferModel API)
 # ---------------------------------------------------------------------------
 class HailoPoseEstimator:
-    """YOLOv8m-pose inference on Hailo-10H via HailoRT 5.x InferModel API.
+    """YOLOv8m-pose inference via hailo_inference_server (TCP client) or direct VDevice.
 
     Output tensors (9 total, no built-in NMS):
       stride 8  (80×80): conv59 bbox[64], conv60 cls[1], conv61 kpt[51]
@@ -95,48 +96,63 @@ class HailoPoseEstimator:
 
     def __init__(self, hef_path: str, input_size: int = 640,
                  score_threshold: float = 0.3, nms_iou: float = 0.45,
-                 device_id: Optional[str] = None):
+                 device_id: Optional[str] = None,
+                 use_server: bool = False, server_host: str = "localhost",
+                 server_port: int = 8003):
         self.input_size = input_size
         self.score_threshold = score_threshold
         self.nms_iou = nms_iou
+        self._client = None
+        self._vdevice = None
+        self._infer_model = None
+        self._ctx = None
+        self._configured = None
 
-        try:
-            from hailo_platform import VDevice, FormatType
-        except ImportError:
-            raise ImportError(
-                "hailo_platform not installed. Install HailoRT: "
-                "https://hailo.ai/developer-zone/"
-            )
-
-        if not os.path.exists(hef_path):
-            raise FileNotFoundError(f"Hailo HEF model not found: {hef_path}")
-
-        if device_id:
-            params = VDevice.create_params()
-            params.device_ids = [device_id]
-            self._vdevice = VDevice(params)
-            print(f"[HAILO] Using device: {device_id}")
+        if use_server:
+            # Use centralized inference server (shares Hailo with other services)
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+            from hailo_inference_client import HailoInferenceClient
+            self._client = HailoInferenceClient(host=server_host, port=server_port)
+            print(f"[HAILO] Using inference server at {server_host}:{server_port}")
         else:
-            self._vdevice = VDevice()
+            # Direct VDevice access (exclusive Hailo ownership)
+            try:
+                from hailo_platform import VDevice, FormatType
+            except ImportError:
+                raise ImportError(
+                    "hailo_platform not installed. Install HailoRT: "
+                    "https://hailo.ai/developer-zone/"
+                )
 
-        self._infer_model = self._vdevice.create_infer_model(hef_path)
-        self._infer_model.set_batch_size(1)
+            if not os.path.exists(hef_path):
+                raise FileNotFoundError(f"Hailo HEF model not found: {hef_path}")
 
-        # Request float32 outputs (auto-dequantized from UINT8/UINT16)
-        for out in self._infer_model.outputs:
-            self._infer_model.output(out.name).set_format_type(FormatType.FLOAT32)
+            if device_id:
+                params = VDevice.create_params()
+                params.device_ids = [device_id]
+                self._vdevice = VDevice(params)
+                print(f"[HAILO] Using device: {device_id}")
+            else:
+                self._vdevice = VDevice()
 
-        # Keep configured context open for the lifetime of this object
-        self._ctx = self._infer_model.configure()
-        self._configured = self._ctx.__enter__()
+            self._infer_model = self._vdevice.create_infer_model(hef_path)
+            self._infer_model.set_batch_size(1)
 
-        print(f"[HAILO] Loaded model: {hef_path}")
+            for out in self._infer_model.outputs:
+                self._infer_model.output(out.name).set_format_type(FormatType.FLOAT32)
+
+            self._ctx = self._infer_model.configure()
+            self._configured = self._ctx.__enter__()
+            print(f"[HAILO] Loaded model: {hef_path}")
 
     def __del__(self):
-        try:
-            self._ctx.__exit__(None, None, None)
-        except Exception:
-            pass
+        if self._ctx is not None:
+            try:
+                self._ctx.__exit__(None, None, None)
+            except Exception:
+                pass
+        if self._client is not None:
+            self._client.close()
 
     # ------------------------------------------------------------------
     # Public API
@@ -146,19 +162,23 @@ class HailoPoseEstimator:
         orig_h, orig_w = bgr_frame.shape[:2]
         tensor, scale, pad_x, pad_y = self._preprocess(bgr_frame)
 
-        bindings = self._configured.create_bindings()
-        input_name = self._infer_model.inputs[0].name
-        bindings.input(input_name).set_buffer(tensor)
+        if self._client is not None:
+            # Remote inference via TCP server
+            outputs = self._client.infer("yolov8m_pose", tensor)
+        else:
+            # Direct local inference
+            bindings = self._configured.create_bindings()
+            input_name = self._infer_model.inputs[0].name
+            bindings.input(input_name).set_buffer(tensor)
 
-        out_bufs: dict = {}
-        for out in self._infer_model.outputs:
-            buf = np.empty(tuple(out.shape), dtype=np.float32)
-            bindings.output(out.name).set_buffer(buf)
-            out_bufs[out.name] = buf
+            out_bufs: dict = {}
+            for out in self._infer_model.outputs:
+                buf = np.empty(tuple(out.shape), dtype=np.float32)
+                bindings.output(out.name).set_buffer(buf)
+                out_bufs[out.name] = buf
 
-        self._configured.run([bindings], 5000)
-
-        outputs = {name: bindings.output(name).get_buffer() for name in out_bufs}
+            self._configured.run([bindings], 5000)
+            outputs = {name: bindings.output(name).get_buffer() for name in out_bufs}
 
         all_dets: List[dict] = []
         for stride, (bn, cn, kn) in self._SCALE_OUTPUTS.items():
@@ -285,6 +305,9 @@ class OakImageServer:
         hef_path: Optional[str] = None,
         hailo_device_id: Optional[str] = None,
         hailo_device_index: int = 0,
+        use_hailo_server: bool = False,
+        hailo_server_host: str = "localhost",
+        hailo_server_port: int = 8003,
         debug: bool = False,
     ):
         self.shm_image_name = shm_image_name
@@ -305,18 +328,27 @@ class OakImageServer:
         # Person tracker for persistent IDs
         self.tracker = PersonTracker()
 
-        # Hailo-10 pose estimator (auto-detect device + auto-download model)
+        # Hailo-10 pose estimator
         self.pose_estimator: Optional[HailoPoseEstimator] = None
-        if hef_path is None:
-            # Auto-download YOLOv8s-pose HEF
-            hef_path = get_hef_path("yolov8m_pose")
-        if hef_path:
-            if is_hailo_available():
-                if hailo_device_id is None:
-                    hailo_device_id = detect_hailo_device(device_index=hailo_device_index)
-                self.pose_estimator = HailoPoseEstimator(hef_path, device_id=hailo_device_id)
-            else:
-                print("[OAK] No Hailo device — pose estimation disabled")
+        if use_hailo_server:
+            # Use centralized inference server (shares Hailo with face_recognition, etc.)
+            self.pose_estimator = HailoPoseEstimator(
+                hef_path="",  # not needed in server mode
+                use_server=True,
+                server_host=hailo_server_host,
+                server_port=hailo_server_port,
+            )
+        else:
+            # Direct VDevice access (exclusive)
+            if hef_path is None:
+                hef_path = get_hef_path("yolov8m_pose")
+            if hef_path:
+                if is_hailo_available():
+                    if hailo_device_id is None:
+                        hailo_device_id = detect_hailo_device(device_index=hailo_device_index)
+                    self.pose_estimator = HailoPoseEstimator(hef_path, device_id=hailo_device_id)
+                else:
+                    print("[OAK] No Hailo device — pose estimation disabled")
 
         # FPS tracking
         self._last_fps_time: Optional[float] = None
@@ -472,11 +504,11 @@ class OakImageServer:
         data += struct.pack("<24f", *([0.0] * 24))     # bbox_3d
         data += struct.pack("<fff", 0.0, 0.0, 0.0)     # dimensions
 
-        # head_bounding_box_2d — USED
+        # head_bounding_box_2d — USED (unsigned int, clamp negatives to 0)
         head_bbox = body.get("head_bounding_box_2d", [(0, 0)] * 4)
         bbox_values = []
         for corner in head_bbox[:4]:
-            bbox_values.extend([int(corner[0]), int(corner[1])])
+            bbox_values.extend([max(0, int(corner[0])), max(0, int(corner[1]))])
         data += struct.pack("<8I", *bbox_values[:8])
 
         data += struct.pack("<24f", *([0.0] * 24))     # head_bbox_3d
@@ -671,12 +703,25 @@ def main() -> None:
                         help="Hailo device ID (e.g. '0000:02:00.0'). Default: auto-detect")
     parser.add_argument("--hailo-index", type=int, default=0,
                         help="Hailo device index when multiple present (default: 0)")
+    parser.add_argument("--use-hailo-server", action="store_true",
+                        help="Use centralized hailo_inference_server instead of direct VDevice")
+    parser.add_argument("--hailo-server-host", type=str, default="localhost",
+                        help="Hailo inference server host (default: localhost)")
+    parser.add_argument("--hailo-server-port", type=int, default=8003,
+                        help="Hailo inference server port (default: 8003)")
     parser.add_argument("--debug", action="store_true",
                         help="Enable FPS debug output")
     args = parser.parse_args()
 
-    server = OakImageServer(hef_path=args.hef, hailo_device_id=args.hailo_device,
-                            hailo_device_index=args.hailo_index, debug=args.debug)
+    server = OakImageServer(
+        hef_path=args.hef,
+        hailo_device_id=args.hailo_device,
+        hailo_device_index=args.hailo_index,
+        use_hailo_server=args.use_hailo_server,
+        hailo_server_host=args.hailo_server_host,
+        hailo_server_port=args.hailo_server_port,
+        debug=args.debug,
+    )
     server.run()
 
 

@@ -73,8 +73,8 @@ RUN apt-get update && \
    ros-jazzy-nav2-bringup && \
    rm -rf /var/lib/apt/lists/*
 
-# OAK-D Pro W
-RUN pip install --break-system-packages depthai
+# OAK-D Pro W + client dependencies for demo/test scripts
+RUN pip install --break-system-packages depthai requests
 
 # Hailo model auto-downloader + pre-cache HEF models at build time
 # Cached to /root/hailo_models_cache/ (outside /root/workspace volume mount)

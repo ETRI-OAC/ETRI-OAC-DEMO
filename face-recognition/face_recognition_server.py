@@ -114,7 +114,12 @@ def recognize_face():
             }), 500
         
         name, similarity = recognizer.recognize(face_image)
-        
+
+        if name != "Unknown":
+            print(f"[RECOGNIZE] {name} (similarity: {similarity:.3f})")
+        else:
+            print(f"[RECOGNIZE] Unknown (best: {similarity:.3f})")
+
         return jsonify({
             "success": True,
             "name": name,
@@ -149,6 +154,12 @@ def main():
                        help='Hailo device ID (e.g. "0000:02:00.0"). Default: auto-detect')
     parser.add_argument('--hailo-index', type=int, default=0,
                        help='Hailo device index when multiple present (default: 0)')
+    parser.add_argument('--use-hailo-server', action='store_true',
+                       help='Use centralized hailo_inference_server instead of direct VDevice')
+    parser.add_argument('--hailo-server-host', type=str, default='localhost',
+                       help='Hailo inference server host (default: localhost)')
+    parser.add_argument('--hailo-server-port', type=int, default=8003,
+                       help='Hailo inference server port (default: 8003)')
 
     args = parser.parse_args()
 
@@ -164,6 +175,9 @@ def main():
         hailo_hef_path=args.hailo_hef,
         hailo_device_id=args.hailo_device,
         hailo_device_index=args.hailo_index,
+        use_hailo_server=args.use_hailo_server,
+        hailo_server_host=args.hailo_server_host,
+        hailo_server_port=args.hailo_server_port,
     )
     
     # Load database

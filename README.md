@@ -2,7 +2,57 @@
 
 4족 보행 로봇에 카메라, AI, 음성, 내비게이션을 결합한 데모 시스템입니다.
 
-![system_overview](./docs/system_overview.png)
+```mermaid
+graph TB
+    subgraph HOST["AMD Ryzen AI 350 + Ubuntu 24.04"]
+        direction TB
+
+        subgraph OAK["OAK-ROS2 Container"]
+            CAM["OAK-D Pro W<br/>카메라 + 깊이"]
+            HAILO_SRV["Hailo Inference Server<br/>TCP :8003"]
+            NAV["Nav2 / AMCL<br/>자율 주행"]
+            MW["CANINE Middleware<br/>로봇 제어"]
+            LIDAR["RPLidar"]
+            PT["Pan-Tilt 서보"]
+        end
+
+        subgraph VLM_C["VLM Container"]
+            VLM["Gemma-3-4b-it-mm<br/>Ryzen AI NPU / CPU<br/>REST :8000"]
+        end
+
+        subgraph TTS_C["TTS-STT Container"]
+            STT["Whisper STT<br/>CPU / Hailo[1]<br/>REST :8001"]
+            TTS["Sherpa-ONNX TTS<br/>CPU<br/>REST :8002"]
+        end
+
+        subgraph FACE_C["Face Recognition Container"]
+            FACE["InsightFace ArcFace<br/>검출: Hailo (via :8003)<br/>임베딩: CPU<br/>REST :7999"]
+        end
+
+        SHM["/dev/shm<br/>zed_image_shm + zed_body_shm"]
+    end
+
+    ROBOT["🦿 CANINE 4족 로봇"]
+
+    CAM -->|"BGR 프레임"| SHM
+    HAILO_SRV -->|"포즈 결과"| SHM
+    CAM -->|"TCP 추론 요청"| HAILO_SRV
+    FACE -->|"TCP 추론 요청"| HAILO_SRV
+    SHM -->|"이미지 + 바디"| NAV
+    SHM -->|"이미지"| VLM
+    SHM -->|"이미지"| FACE
+    MW <-->|"ROS 2 Topics<br/>canine_states / canine_command"| ROBOT
+    LIDAR -->|"scan"| NAV
+    NAV -->|"cmd_vel"| MW
+    PT -->|"pan-tilt 추적"| CAM
+
+    style HOST fill:#f0f0f0,stroke:#333
+    style OAK fill:#d4e6f1,stroke:#2980b9
+    style VLM_C fill:#d5f5e3,stroke:#27ae60
+    style TTS_C fill:#fdebd0,stroke:#e67e22
+    style FACE_C fill:#e8daef,stroke:#8e44ad
+    style HAILO_SRV fill:#aed6f1,stroke:#2471a3,stroke-width:2px
+```
 
 ---
 
@@ -169,44 +219,63 @@ wget -O hailo_models/scrfd_10g.hef \
   "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v5.2.0/hailo10h/scrfd_10g.hef"
 ```
 
-### 1-7. Ryzen AI SDK 설치 (VLM 사용 시)
+### 1-7. Ryzen AI SDK 설치 (NPU 가속 시, 선택사항)
 
-VLM(비전 언어 모델)을 사용하려면 AMD NPU 드라이버가 필요합니다.
+VLM을 NPU로 가속하려면 AMD Ryzen AI SDK가 필요합니다. **없어도 CPU로 동작합니다.**
 
 ```bash
-# AMD Ryzen AI SDK 설치
-# https://www.amd.com/en/developer/resources/ryzen-ai-software.html 에서 다운로드
+# 1. AMD Ryzen AI SDK 다운로드 (ryzen_ai-1.7.0 등)
+# https://www.amd.com/en/developer/resources/ryzen-ai-software.html
+# 다운로드한 .run 파일을 실행하면 /opt/ryzenai/에 설치됨
 
-# NPU 드라이버 로드
+# 2. NPU 드라이버 로드
 sudo modprobe amdxdna
 
-# NPU 장치 확인
+# 3. NPU 장치 확인
 ls /dev/accel/accel*
 # 출력: /dev/accel/accel0
 
-# Python 패키지 설치
-pip install onnxruntime-vitisai transformers pillow huggingface_hub
+# 4. SDK wheels을 /opt/ryzenai/wheels/에 배치
+#    VLM 컨테이너 시작 시 entrypoint.sh가 여기서 자동 설치합니다.
+#    SDK 설치 시 자동 배치되지 않았다면 수동 복사:
+sudo mkdir -p /opt/ryzenai/wheels
+sudo cp ~/Downloads/ryzen_ai-1.7.0/*.whl /opt/ryzenai/wheels/
 
-pip install onnxruntime transformers pillow huggingface_hub
+# 설치 확인
+ls /opt/ryzenai/wheels/
+# 필요한 파일들:
+#   voe-*.whl
+#   vitis_aie_essentials-*.whl
+#   device_essentials_strx-*.whl
+#   ryzenai_dynamic_dispatch-*.whl
+#   onnxruntime_vitisai-*.whl
+#   onnxruntime_genai_ryzenai-*.whl
 ```
 
-### 1-8. VLM 모델 다운로드
+VLM 컨테이너는 `/opt/ryzenai`를 읽기 전용으로 마운트합니다:
+- `/opt/ryzenai/wheels/` → `entrypoint.sh`가 시작 시 Python wheels 자동 설치
+- `/opt/ryzenai/venv/deployment/lib/` → `libryzen_mm.so` 등 런타임 공유 라이브러리 (`LD_LIBRARY_PATH`로 참조)
+
+> **NPU 없이 CPU로 실행 시:** 이 단계를 건너뛰면 VLM이 CPU에서 동작합니다 (느리지만 기능 동일).
+
+### 1-8. VLM 빌드 준비
+
+VLM 컨테이너 빌드 시 모델은 **자동 다운로드**됩니다 (~4GB, Docker 레이어에 캐시).
+
+AMD 모델은 커스텀 ONNX op(`CastAvx`)을 사용하므로, AMD의 `onnxruntime-genai-ryzenai` wheel이 필요합니다.
+[Ryzen AI SDK](https://www.amd.com/en/developer/resources/ryzen-ai-software.html)에서 다운로드한 파일 중 복사:
 
 ```bash
-# 가상환경이 활성화되어 있어야 합니다 (프롬프트에 (opr-venv) 표시 확인)
-python3 -c "
-from huggingface_hub import snapshot_download
-snapshot_download(
-    repo_id='amd/Gemma-3-4b-it-mm-onnx-ryzenai-npu',
-    local_dir='vlm/models/Gemma-3-4b-it-mm-onnx-ryzenai-npu'
-)
-print('다운로드 완료!')
-"
+# AMD의 wheel 2개를 VLM Docker 빌드 폴더에 복사
+cp ~/Downloads/ryzen_ai-1.7.0/onnxruntime_vitisai-*.whl vlm/docker/
+cp ~/Downloads/ryzen_ai-1.7.0/onnxruntime_genai_ryzenai-*.whl vlm/docker/
 ```
 
-> **오프라인 환경:** 모델은 `vlm/models/Gemma-3-4b-it-mm-onnx-ryzenai-npu/`에 저장됩니다.
-> Docker 컨테이너는 `TRANSFORMERS_OFFLINE=1` 환경변수가 설정되어 있어 **모델과 컨테이너 이미지만 있으면 네트워크 없이 실행**됩니다.
-> 모델 다운로드와 컨테이너 빌드는 온라인에서 한 번만 하면 됩니다.
+> **이 2개 파일이 없으면 빌드가 실패합니다.**
+> - `onnxruntime_vitisai` — VitisAI execution provider (genai의 의존성)
+> - `onnxruntime_genai_ryzenai` — AMD 커스텀 op(`CastAvx`) 포함 GenAI 런타임
+>
+> PyPI의 일반 `onnxruntime-genai`는 이 모델과 호환되지 않습니다.
 
 ### 1-9. NoMachine 설치 (원격 접속 시)
 
@@ -243,8 +312,12 @@ cd ../..
 ### 2-2. VLM 컨테이너 (비전 언어 모델)
 
 ```bash
+# 사전 준비: 1-8단계에서 onnxruntime_genai_ryzenai wheel이 vlm/docker/에 복사되어 있어야 합니다
+ls vlm/docker/onnxruntime_genai_ryzenai-*.whl  # 파일 확인
+
 cd vlm/docker
 ./compose_up.sh
+# 첫 빌드 시 모델 다운로드 포함 (~4GB) — 인터넷 속도에 따라 10~30분 소요
 # 빌드가 끝나면 Ctrl+C로 종료
 cd ../..
 ```
@@ -529,26 +602,28 @@ cd face-recognition/docker && ./exec.sh
 ## 시스템 구조 요약
 
 ```
-┌─ AMD Ryzen AI 350 + Ubuntu 24.04 ─────────────────────────────┐
-│                                                                │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────┐│
-│  │  OAK-ROS2    │  │   TTS-STT    │  │   Face Recognition    ││
-│  │  Container   │  │  Container   │  │     Container         ││
-│  │              │  │              │  │                       ││
-│  │ OAK-D Camera │  │ TTS (8002)   │  │ InsightFace (7999)    ││
-│  │ Hailo[0]     │  │ STT (8001)   │  │ Hailo[0](검출공유)    ││
-│  │ (Pose+Face)  │  │ Hailo[1]자동 │  │ +CPU(임베딩)          ││
-│  │ Nav2         │  │              │  │                       ││
-│  │ Middleware   │  └──────────────┘  └───────────────────────┘│
-│  │ LiDAR       │                                              │
-│  │ Pan-Tilt    │  ┌──────────────┐                            │
-│  └──────────────┘  │     VLM      │                           │
-│                    │  Container   │                           │
-│                    │ Gemma-3-4b   │                           │
-│                    │ Ryzen AI NPU │                           │
-│                    │ (8000)       │                           │
-│                    └──────────────┘                           │
-└────────────────────────────────────────────────────────────────┘
+┌─ AMD Ryzen AI 350 + Ubuntu 24.04 ──────────────────────────────────────┐
+│                                                                         │
+│  ┌─ OAK-ROS2 Container ──────────┐  ┌─ TTS-STT Container ───────────┐ │
+│  │ OAK-D Pro W Camera             │  │ TTS (Sherpa-ONNX)    :8002    │ │
+│  │ Hailo Inference Server  :8003  │  │ STT (Whisper)        :8001    │ │
+│  │  ├─ yolov8m_pose (포즈)        │  │ CPU / Hailo[1] 자동            │ │
+│  │  └─ scrfd_10g   (얼굴 검출)    │  └───────────────────────────────┘ │
+│  │ Nav2 / AMCL                    │                                     │
+│  │ CANINE Middleware              │  ┌─ Face Recognition Container ──┐ │
+│  │ LiDAR + Pan-Tilt              │  │ InsightFace ArcFace    :7999   │ │
+│  └────────────────────────────────┘  │ 검출: Hailo (via :8003)       │ │
+│                                       │ 임베딩: CPU                    │ │
+│  ┌─ VLM Container ───────────────┐  └───────────────────────────────┘ │
+│  │ Gemma-3-4b-it-mm       :8000  │                                     │
+│  │ Ryzen AI NPU / CPU fallback   │  ┌─ /dev/shm ────────────────────┐ │
+│  └────────────────────────────────┘  │ zed_image_shm (BGR 1920×1080) │ │
+│                                       │ zed_body_shm  (포즈 트래킹)    │ │
+│          ▲ ROS 2 Topics               └───────────────────────────────┘ │
+│          │ canine_states / canine_command                                │
+└──────────┼──────────────────────────────────────────────────────────────┘
+           │
+     🦿 CANINE 4족 로봇
 ```
 
 ---
@@ -571,8 +646,11 @@ cd face-recognition/docker && ./exec.sh
 ```
 Ryzen AI NPU ─── Gemma-3-4b-it-mm (VLM)
 
-Hailo-10 [0] ─┬─ YOLOv8m-pose (매 프레임, 상시)
-              └─ SCRFD 10g (얼굴 감지 시에만, 간헐)
+                 ┌─ Hailo Inference Server (TCP :8003) ─┐
+Hailo-10 [0] ───┤  YOLOv8m-pose (매 프레임, 상시)         │
+                 │  SCRFD 10g (얼굴 감지 시, 간헐)          │
+                 │  ← oak_server, face_recognition 공유    │
+                 └─────────────────────────────────────────┘
 
 Hailo-10 [1] ─── Whisper encoder (2개일 때만, 없으면 CPU)
 

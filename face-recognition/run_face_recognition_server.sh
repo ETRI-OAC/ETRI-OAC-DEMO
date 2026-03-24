@@ -8,7 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="${SCRIPT_DIR}/docker"
 CONTAINER_NAME="face-recognition"
 DOCKER_COMPOSE_FILE="docker-compose.yaml"
-COMMAND="cd /root/workspace/face-recognition && python3 face_recognition_server.py"
+# When hailo_inference_server is running (recommended), use --use-hailo-server
+# to share the Hailo device with oak_server and other services.
+# Without it, face_recognition opens VDevice directly (may conflict with oak_server).
+COMMAND="cd /root/workspace/face-recognition && python3 face_recognition_server.py --use-hailo-server --warmup 5"
 
 
 # Must run compose from docker dir so volume ../../ resolves to project root
