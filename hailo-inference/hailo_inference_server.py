@@ -43,7 +43,7 @@ class HailoInferenceServer:
     def __init__(self, port: int = 8003, device_index: int = 0):
         self.port = port
         self._lock = threading.Lock()  # serialize Hailo access
-        self._models: Dict[str, Tuple] = {}  # name → (infer_model, configured, ctx)
+        self._models: Dict[str, dict] = {}  # name → {infer_model, configured, ctx}
         self._running = False
 
         from hailo_platform import VDevice, FormatType
@@ -63,11 +63,11 @@ class HailoInferenceServer:
     # Model management
     # ------------------------------------------------------------------
     def load_model(self, name: str, hef_path: str) -> None:
-        """Load a HEF model onto the device.
+        """Load a HEF model and configure it immediately.
 
-        Models are registered but NOT configured yet. Configuration
-        happens on-demand in infer() because HailoRT 5.x only supports
-        one active configured context per VDevice at a time.
+        All models are configured at startup and kept active simultaneously
+        (multi-context). This eliminates the ~400ms context switch penalty
+        that occurs when using single-context with on-demand configure().
         """
         if not os.path.exists(hef_path):
             raise FileNotFoundError(f"HEF not found: {hef_path}")
@@ -78,49 +78,38 @@ class HailoInferenceServer:
         for out in infer_model.outputs:
             infer_model.output(out.name).set_format_type(self._FormatType.FLOAT32)
 
+        # Configure immediately — keep context alive for the server lifetime
+        ctx = infer_model.configure()
+        configured = ctx.__enter__()
+
         # Print model info
         inp = infer_model.inputs[0]
-        print(f"[HAILO-SERVER] Loaded model: {name} ({hef_path})")
+        print(f"[HAILO-SERVER] Loaded + configured: {name} ({hef_path})")
         print(f"  input: {inp.name} shape={inp.shape}")
         for out in infer_model.outputs:
             print(f"  output: {out.name} shape={out.shape}")
 
-        self._models[name] = infer_model
-        self._active_model: Optional[str] = None
-        self._active_ctx = None
-        self._active_configured = None
-
-    def _activate_model(self, model_name: str) -> None:
-        """Switch the active configured model (deactivate previous if different)."""
-        if self._active_model == model_name:
-            return  # already active
-
-        # Deactivate previous model
-        if self._active_ctx is not None:
-            try:
-                self._active_ctx.__exit__(None, None, None)
-            except Exception:
-                pass
-            self._active_ctx = None
-            self._active_configured = None
-            self._active_model = None
-
-        # Activate new model
-        infer_model = self._models[model_name]
-        self._active_ctx = infer_model.configure()
-        self._active_configured = self._active_ctx.__enter__()
-        self._active_model = model_name
+        self._models[name] = {
+            "infer_model": infer_model,
+            "configured": configured,
+            "ctx": ctx,
+        }
 
     def infer(self, model_name: str, input_tensor: np.ndarray) -> Dict[str, np.ndarray]:
-        """Run inference on a loaded model. Thread-safe."""
+        """Run inference on a loaded model. Thread-safe.
+
+        No context switch needed — all models stay configured simultaneously.
+        The lock only serializes access to the Hailo device (one inference at a time).
+        """
         if model_name not in self._models:
             raise ValueError(f"Model not loaded: {model_name}")
 
-        with self._lock:
-            self._activate_model(model_name)
+        entry = self._models[model_name]
+        infer_model = entry["infer_model"]
+        configured = entry["configured"]
 
-            infer_model = self._models[model_name]
-            bindings = self._active_configured.create_bindings()
+        with self._lock:
+            bindings = configured.create_bindings()
             input_name = infer_model.inputs[0].name
             bindings.input(input_name).set_buffer(input_tensor)
 
@@ -130,7 +119,7 @@ class HailoInferenceServer:
                 bindings.output(out.name).set_buffer(buf)
                 out_bufs[out.name] = buf
 
-            self._active_configured.run([bindings], 10000)
+            configured.run([bindings], 10000)
 
         return {name: bindings.output(name).get_buffer() for name in out_bufs}
 
@@ -221,9 +210,9 @@ class HailoInferenceServer:
         self._cleanup()
 
     def _cleanup(self) -> None:
-        if self._active_ctx is not None:
+        for name, entry in self._models.items():
             try:
-                self._active_ctx.__exit__(None, None, None)
+                entry["ctx"].__exit__(None, None, None)
             except Exception:
                 pass
         self._models.clear()

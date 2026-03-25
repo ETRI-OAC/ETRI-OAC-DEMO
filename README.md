@@ -114,6 +114,17 @@ graph TB
 | **1개** | Pose(OAK) + Face(공유) | — (STT는 CPU) |
 | **2개** | Pose(OAK) + Face(공유) | STT(Whisper) |
 
+### Hailo-10 Multi-Context 스케줄링
+
+Hailo Inference Server는 **multi-context 방식**으로 두 모델(YOLOv8m-pose + SCRFD-10g)을 동시에 로드합니다.
+HailoRT의 ROUND_ROBIN 스케줄러가 HW 레벨에서 자동 전환하므로 context switch 오버헤드가 없습니다.
+
+| 방식 | Pose | SCRFD | Round (교대) | 비고 |
+|------|------|-------|-------------|------|
+| Single-context (모델 교체) | 31ms | 20ms | **817ms** | configure/exit에 ~400ms |
+| **Multi-context (동시 로드)** | **32ms** | **21ms** | **52ms** | HW 자동 전환, 0ms 오버헤드 |
+| Multi-context + TCP | 38ms | 23ms | 61ms | 실제 운용 환경 |
+
 > **NVIDIA GPU/CUDA 불필요** — 모든 AI 추론은 Hailo-10, Ryzen AI NPU, 또는 CPU에서 수행됩니다.
 
 ---
