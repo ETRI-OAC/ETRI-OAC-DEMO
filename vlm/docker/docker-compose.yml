@@ -21,5 +21,4 @@ services:
       - TRANSFORMERS_OFFLINE=1
       - HF_DATASETS_OFFLINE=1
       - XLNX_VART_FIRMWARE=/opt/ryzenai/share/xdna/vaip_config.json
-      - LD_LIBRARY_PATH=/opt/ryzenai/venv/deployment/lib:/opt/ryzenai/venv/lib/python3.12/site-packages/onnxruntime_genai:/opt/xilinx/xrt/lib
     restart: unless-stopped

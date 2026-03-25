@@ -25,8 +25,8 @@ RUN pip3 install --break-system-packages \
 # onnxruntime_genai_ryzenai provides CastAvx custom op required by the model.
 # Do NOT install generic onnxruntime — it conflicts and breaks CastAvx registration.
 COPY onnxruntime_vitisai-*.whl onnxruntime_genai_ryzenai-*.whl /root/amd_wheels/
-RUN pip3 install --break-system-packages --no-deps /root/amd_wheels/onnxruntime_vitisai-*.whl \
-    && pip3 install --break-system-packages --no-deps /root/amd_wheels/onnxruntime_genai_ryzenai-*.whl \
+RUN pip3 install --break-system-packages --no-deps /root/amd_wheels/onnxruntime_genai_ryzenai-*.whl \
+    && pip3 install --break-system-packages --no-deps /root/amd_wheels/onnxruntime_vitisai-*.whl \
     && echo "[VLM] ONNX Runtime VitisAI + GenAI (AMD) installed"
 
 # Download VLM model at build time (~4GB, cached in Docker layer)
