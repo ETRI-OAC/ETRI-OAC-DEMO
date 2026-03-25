@@ -50,7 +50,8 @@ class FasterWhisperTranscriber:
 
     def transcribe(self, audio_path: str, language: str = None) -> str:
         segments, _ = self.model.transcribe(
-            audio_path, language=language, beam_size=5
+            audio_path, language=language or "ko", beam_size=5,
+            initial_prompt="안녕하세요. 이 로봇은 ETRI에서 만들었습니다."
         )
         return " ".join(seg.text for seg in segments).strip()
 

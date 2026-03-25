@@ -28,28 +28,22 @@ echo "============================================================"
 echo "  ETRI-OAC-DEMO Docker Build (all containers)"
 echo "============================================================"
 
-# 1. Hailo Inference (no dependencies, fastest)
+# 1. OAK-Camera (camera server, base for other ROS containers)
+build "OAK-Camera" "oak-camera/docker"
+
+# 2. Hailo Inference + Face Recognition
 build "Hailo Inference" "hailo-inference/docker"
 
-# 2. OAK-ROS2 (camera + demo scripts)
-build "OAK-ROS2" "oak-camera/docker"
-
-# 3. RPLidar (needs rplidar_ros source from oak-camera)
-build "RPLidar" "nav2/docker" # RPLidar merged into Nav2
-
-# 4. Nav2 (standalone ROS 2 + Nav2)
+# 3. Nav2 + RPLidar
 build "Nav2" "nav2/docker"
 
-# 5. Demo GUI (PyQt5 + ROS 2 client)
+# 4. Demo GUI (PyQt5 + ROS 2 + CANINE middleware)
 build "Demo GUI" "demo-gui/docker"
 
-# 6. Face Recognition
-build "Face Recognition" "hailo-inference/docker" # Face merged into Hailo
-
-# 7. TTS-STT
+# 5. TTS-STT
 build "TTS-STT" "tts-stt/docker"
 
-# 8. VLM (disabled but buildable; downloads ~4GB model)
+# 6. VLM (disabled — SDK 1.7.0 genai does not support Krackan NPU)
 # Uncomment to build:
 # build "VLM" "vlm/docker"
 

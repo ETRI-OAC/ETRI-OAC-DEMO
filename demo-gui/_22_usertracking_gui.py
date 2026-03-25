@@ -484,17 +484,20 @@ def main():
     usertracking_client = humanTracking(zed_client=zed_client, tts_client=tts_client)
     usertracking_thread = UsertrackingThread(usertracking_client)
     # what's modified: vllm client separated to another thread
-    vllm_client = VLLMClient(
-        api_url = "http://localhost:8000",
-        stt_client = stt_client,
-        tts_client = tts_client,
-        zed_client = zed_client
-    )
-    vlm_thread = VLLMThread(vllm_client)
-    # what's modified: vllm thread works!
+    try:
+        vllm_client = VLLMClient(
+            api_url = "http://localhost:8000",
+            stt_client = stt_client,
+            tts_client = tts_client,
+            zed_client = zed_client
+        )
+        vlm_thread = VLLMThread(vllm_client)
+        print("[VLM] Connected to VLM server")
+    except Exception as e:
+        print(f"[VLM] VLM server unavailable ({e}), running without VLM")
+        vlm_thread = None
     qt_widget = DemoQtWidget(
         vlm_thread=vlm_thread,
-        # vlm_thread=None,
         patrol_thread=None,
         usertracking_thread=usertracking_thread
     )
