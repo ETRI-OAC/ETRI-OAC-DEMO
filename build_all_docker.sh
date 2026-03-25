@@ -32,19 +32,19 @@ echo "============================================================"
 build "Hailo Inference" "hailo-inference/docker"
 
 # 2. OAK-ROS2 (camera + demo scripts)
-build "OAK-ROS2" "zed-ros2-workspace/docker"
+build "OAK-ROS2" "oak-camera/docker"
 
-# 3. RPLidar (needs rplidar_ros source from zed-ros2-workspace)
-build "RPLidar" "rplidar/docker"
+# 3. RPLidar (needs rplidar_ros source from oak-camera)
+build "RPLidar" "nav2/docker" # RPLidar merged into Nav2
 
 # 4. Nav2 (standalone ROS 2 + Nav2)
 build "Nav2" "nav2/docker"
 
 # 5. Demo GUI (PyQt5 + ROS 2 client)
-build "Demo GUI" "demo/docker"
+build "Demo GUI" "demo-gui/docker"
 
 # 6. Face Recognition
-build "Face Recognition" "face-recognition/docker"
+build "Face Recognition" "hailo-inference/docker" # Face merged into Hailo
 
 # 7. TTS-STT
 build "TTS-STT" "tts-stt/docker"

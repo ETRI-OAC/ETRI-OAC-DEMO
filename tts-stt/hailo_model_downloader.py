@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 # Default model directory: <project_root>/hailo_models/
-# oak_wrapper/ → zed-ros2-workspace/ → project_root/
+# oak_wrapper/ → oak-camera/ → project_root/
 DEFAULT_MODEL_DIR = Path(__file__).parent.parent / "hailo_models"
 
 # S3 base URL for pre-compiled HEF files

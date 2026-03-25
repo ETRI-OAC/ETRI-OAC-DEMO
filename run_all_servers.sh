@@ -39,18 +39,18 @@ tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./tts-stt/run_stt_server.
 # Pane 2: TTS
 tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./tts-stt/run_tts_server.sh; exec bash"
 # Pane 3: Face Recognition
-tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./face-recognition/run_face_recognition_server.sh; exec bash"
+tmux split-window -h -t "$SESSION" "cd '$REPO_ROOT' && ./hailo-inference/run_face_recognition_server.sh; exec bash"
 # Pane 4: CANINE Middleware
-tmux split-window -v -t "$SESSION.0" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_middleware.sh; exec bash"
+tmux split-window -v -t "$SESSION.0" "cd '$REPO_ROOT' && ./oak-camera/run_middleware.sh; exec bash"
 # Pane 5: RPLidar
-tmux split-window -v -t "$SESSION.4" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_lidar.sh; exec bash"
+tmux split-window -v -t "$SESSION.4" "cd '$REPO_ROOT' && ./oak-camera/run_lidar.sh; exec bash"
 # Pane 6: Pan-Tilt
-tmux split-window -v -t "$SESSION.5" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_pantilt.sh; exec bash"
+tmux split-window -v -t "$SESSION.5" "cd '$REPO_ROOT' && ./oak-camera/run_pantilt.sh; exec bash"
 # Pane 7: OAK-D Camera + Pose
-tmux split-window -v -t "$SESSION.6" "cd '$REPO_ROOT' && ./zed-ros2-workspace/run_oak_server.sh; exec bash"
+tmux split-window -v -t "$SESSION.6" "cd '$REPO_ROOT' && ./oak-camera/run_oak_server.sh; exec bash"
 
 # VLM disabled — SDK 1.7.0 genai doesn't support Krackan NPU yet
-# Nav2 launched separately: ./zed-ros2-workspace/run_nav2_indoor.sh or run_nav2_outdoor.sh
+# Nav2 launched separately: ./oak-camera/run_nav2_indoor.sh or run_nav2_outdoor.sh
 
 # Even out pane sizes
 tmux select-layout -t "$SESSION" tiled

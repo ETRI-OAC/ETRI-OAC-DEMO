@@ -30,7 +30,7 @@ import numpy as np
 # Add project root to path so we can import hailo_utils / hailo_model_downloader
 # ---------------------------------------------------------------------------
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_OAK_WRAPPER = os.path.join(_PROJECT_ROOT, "zed-ros2-workspace", "oak_wrapper")
+_OAK_WRAPPER = os.path.join(_PROJECT_ROOT, "oak-camera", "oak_wrapper")
 sys.path.insert(0, _OAK_WRAPPER)
 
 from hailo_utils import detect_hailo_device, is_hailo_available

@@ -7,7 +7,7 @@ graph TB
     subgraph HOST["AMD Ryzen AI 350 + Ubuntu 24.04"]
         direction TB
 
-        subgraph OAK["OAK-ROS2 Container"]
+        subgraph OAK["OAK-Camera Container"]
             CAM["OAK-D Pro W<br/>DepthAI v3.5<br/>RGB 1920x1080 + Stereo Depth"]
         end
 
@@ -16,19 +16,17 @@ graph TB
             PT["Dynamixel Pan-Tilt<br/>PID 얼굴 추적"]
         end
 
-        subgraph HAILO_C["Hailo Inference Container"]
+        subgraph HAILO_C["Hailo Inference + Face Recognition Container"]
             HAILO_SRV["Hailo Inference Server :8003<br/>YOLOv8m-pose (포즈, 28MB HEF)<br/>SCRFD-10g (얼굴검출, 4.5MB HEF)<br/>Hailo-10 M.2"]
+            FACE["Face Recognition :7999<br/>검출: SCRFD-10g via Hailo<br/>임베딩: ArcFace w600k_r50 (CPU)<br/>InsightFace buffalo_l"]
         end
 
-        subgraph NAV_C["Nav2 Container"]
+        subgraph NAV_C["Nav2 + RPLidar Container"]
             NAV["Nav2 / AMCL<br/>Omni-directional 모델<br/>자율 주행"]
-        end
-
-        subgraph LIDAR_C["RPLidar Container"]
             LIDAR["RPLidar<br/>장애물 감지<br/>USB Serial"]
         end
 
-        MW["CANINE Middleware<br/>로봇 제어 (50Hz)<br/>ROS 2 + Dynamixel<br/>(Host via OAK-ROS2 exec)"]
+        MW["CANINE Middleware<br/>로봇 제어 (50Hz)<br/>ROS 2 + Dynamixel<br/>(Demo GUI Container)"]
 
         subgraph VLM_C["VLM Container (비활성)"]
             VLM["Gemma-3-4b-it-mm<br/>onnxruntime-genai<br/>Ryzen AI NPU<br/>REST :8000"]
@@ -39,10 +37,6 @@ graph TB
             TTS["Sherpa-ONNX VITS<br/>한국어 KSS 모델<br/>CPU<br/>REST :8002"]
         end
 
-        subgraph FACE_C["Face Recognition Container"]
-            FACE["검출: SCRFD-10g via Hailo :8003<br/>임베딩: ArcFace w600k_r50 (CPU)<br/>InsightFace buffalo_l<br/>REST :7999"]
-        end
-
         SHM["/dev/shm<br/>zed_image_shm + zed_body_shm"]
     end
 
@@ -51,7 +45,6 @@ graph TB
     CAM -->|"BGR 프레임"| SHM
     HAILO_SRV -->|"포즈 17 keypoints"| SHM
     CAM -->|"TCP 추론 요청"| HAILO_SRV
-    FACE -->|"TCP SCRFD 요청"| HAILO_SRV
     SHM -->|"이미지 + 바디"| DEMO
     DEMO <-->|"오디오 → 텍스트"| STT
     DEMO -->|"텍스트 → 음성 출력"| TTS
@@ -67,10 +60,8 @@ graph TB
     style OAK fill:#d4e6f1,stroke:#2980b9
     style HAILO_C fill:#aed6f1,stroke:#2471a3,stroke-width:2px
     style NAV_C fill:#d4efdf,stroke:#1e8449
-    style LIDAR_C fill:#d4efdf,stroke:#1e8449
     style VLM_C fill:#d5f5e3,stroke:#27ae60,stroke-dasharray: 5 5
     style TTS_C fill:#fdebd0,stroke:#e67e22
-    style FACE_C fill:#e8daef,stroke:#8e44ad
     style DEMO_C fill:#f9e79f,stroke:#f39c12,stroke-width:2px
 ```
 
@@ -311,7 +302,7 @@ cp ~/Downloads/ryzen_ai-1.7.0/onnxruntime_genai_ryzenai-*.whl vlm/docker/
 
 ## 2단계: Docker 이미지 빌드
 
-8개의 컨테이너를 빌드합니다. **처음 한 번만 하면 됩니다.**
+6개의 컨테이너를 빌드합니다. **처음 한 번만 하면 됩니다.**
 
 ### 한 번에 모두 빌드 (권장)
 
@@ -319,11 +310,20 @@ cp ~/Downloads/ryzen_ai-1.7.0/onnxruntime_genai_ryzenai-*.whl vlm/docker/
 ./build_all_docker.sh
 ```
 
-> 의존성 순서대로 빌드합니다: Hailo Inference → OAK-ROS2 → RPLidar → Nav2 → Demo GUI → Face Recognition → TTS-STT (VLM은 기본 비활성)
+> 의존성 순서대로 빌드합니다: OAK-Camera → Hailo Inference → Nav2 → Demo GUI → TTS-STT (VLM은 기본 비활성)
 
 ### 개별 빌드
 
-#### 2-1. Hailo Inference 컨테이너 (AI 가속기 서버, 신규)
+#### 2-1. OAK-Camera 컨테이너 (카메라)
+
+```bash
+cd oak-camera/docker
+./build.sh
+# 약 10~20분 소요
+cd ../..
+```
+
+#### 2-2. Hailo Inference 컨테이너 (AI 가속기 서버 + 얼굴 인식)
 
 ```bash
 cd hailo-inference/docker
@@ -331,31 +331,7 @@ cd hailo-inference/docker
 cd ../..
 ```
 
-#### 2-2. OAK-ROS2 컨테이너 (카메라)
-
-```bash
-# HailoRT 파일을 빌드 폴더에 복사 (선택 — 없어도 빌드 가능, Hailo 비활성화 상태로 실행)
-cp hailort_*.deb zed-ros2-workspace/docker/        # 드라이버 .deb
-cp hailort-*.whl zed-ros2-workspace/docker/        # Python wheel (Hailo 추론에 필요)
-
-cd zed-ros2-workspace/docker
-./build.sh
-# 약 10~20분 소요
-cd ../..
-```
-
-> **.deb와 .whl 모두 필요합니다.** .deb는 HailoRT 시스템 라이브러리, .whl은 Python `hailo_platform` 바인딩입니다.
-> 둘 다 [Hailo Developer Zone](https://hailo.ai/developer-zone/)에서 버전 5.2.0으로 다운로드하세요.
-
-#### 2-3. RPLidar 컨테이너 (LiDAR, 신규)
-
-```bash
-cd rplidar/docker
-./build.sh
-cd ../..
-```
-
-#### 2-4. Nav2 컨테이너 (내비게이션, 신규)
+#### 2-3. Nav2 컨테이너 (내비게이션 + RPLidar)
 
 ```bash
 cd nav2/docker
@@ -363,27 +339,15 @@ cd nav2/docker
 cd ../..
 ```
 
-#### 2-5. Demo GUI 컨테이너 (데모 스크립트, 신규)
+#### 2-4. Demo GUI 컨테이너 (데모 스크립트)
 
 ```bash
-cd demo/docker
+cd demo-gui/docker
 ./build.sh
 cd ../..
 ```
 
-#### 2-6. Face Recognition 컨테이너 (얼굴 인식)
-
-```bash
-# HailoRT .deb를 빌드 폴더에 복사 (Hailo 얼굴 검출 사용 시)
-cp hailort_*.deb face-recognition/docker/
-
-cd face-recognition/docker
-./compose_up.sh
-# 빌드가 끝나면 Ctrl+C로 종료
-cd ../..
-```
-
-#### 2-7. TTS-STT 컨테이너 (음성 합성/인식)
+#### 2-5. TTS-STT 컨테이너 (음성 합성/인식)
 
 ```bash
 cd tts-stt/docker
@@ -392,7 +356,7 @@ cd tts-stt/docker
 cd ../..
 ```
 
-#### 2-8. VLM 컨테이너 (비전 언어 모델, 선택사항)
+#### 2-6. VLM 컨테이너 (비전 언어 모델, 선택사항)
 
 ```bash
 # 사전 준비: 1-8단계에서 onnxruntime_genai_ryzenai wheel이 vlm/docker/에 복사되어 있어야 합니다
@@ -435,21 +399,20 @@ docker load < vlm-ryzenai.tar.gz
 ./run_all_servers.sh
 ```
 
-8개의 서버가 tmux 분할 화면에서 동시에 시작됩니다:
+6개의 서버가 tmux 분할 화면에서 동시에 시작됩니다:
 
 | 패널 | 서버 | 포트 |
 |------|------|------|
-| 0 | Hailo Inference Server (AI 가속) | 8003 |
+| 0 | Hailo Inference Server + Face Recognition (AI 가속 + 얼굴인식) | 8003, 7999 |
 | 1 | STT (Whisper 음성인식) | 8001 |
 | 2 | TTS (한국어 음성합성) | 8002 |
-| 3 | Face Recognition (얼굴인식) | 7999 |
-| 4 | CANINE Middleware (로봇 제어) | — |
-| 5 | RPLidar (장애물 감지) | — |
-| 6 | Pan-Tilt (카메라 서보) | — |
-| 7 | OAK-D Camera (영상 + 포즈) | — |
+| 3 | CANINE Middleware (로봇 제어) | — |
+| 4 | RPLidar (장애물 감지) | — |
+| 5 | Pan-Tilt (카메라 서보) | — |
+| 6 | OAK-D Camera (영상 + 포즈) | — |
 
 > **VLM은 비활성 상태입니다** — Ryzen AI SDK 1.7.0이 Krackan NPU를 아직 지원하지 않습니다.
-> Nav2는 별도로 실행합니다: `./zed-ros2-workspace/run_nav2_indoor.sh` 또는 `run_nav2_outdoor.sh`
+> Nav2는 별도로 실행합니다: `./oak-camera/run_nav2_indoor.sh` 또는 `run_nav2_outdoor.sh`
 
 > **tmux 사용법:** `Ctrl+B` → 방향키로 패널 이동, `Ctrl+B` → `D`로 빠져나오기
 
@@ -462,7 +425,7 @@ docker load < vlm-ryzenai.tar.gz
 ./run_hailo_server.sh
 
 # 터미널 2: 카메라 서버
-cd zed-ros2-workspace
+cd oak-camera
 ./run_oak_server.sh
 
 # 터미널 3: STT
@@ -474,7 +437,7 @@ cd tts-stt
 ./run_tts_server.sh
 
 # 터미널 5: 얼굴 인식
-cd face-recognition
+cd hailo-inference
 ./run_face_recognition_server.sh
 
 # (선택) VLM — 현재 비활성
@@ -489,9 +452,9 @@ cd face-recognition
 
 ```bash
 # 카메라 확인
-cd demo/docker && ./exec.sh
+cd demo-gui/docker && ./exec.sh
 python3 -c "
-import sys; sys.path.insert(0, '/root/workspace/zed-ros2-workspace/clients')
+import sys; sys.path.insert(0, '/root/workspace/oak-camera/clients')
 from zed_client import ZedClient
 c = ZedClient()
 img = c.grab_image(timeout=2.0)
@@ -523,8 +486,8 @@ curl http://localhost:7999/health
 2. **Middleware GUI**에서 로봇을 **Walk** 모드로 변경합니다
 3. Twist republisher를 실행합니다:
    ```bash
-   cd demo/docker && ./exec.sh
-   cd /root/workspace/SLAM_Nav
+   cd demo-gui/docker && ./exec.sh
+   cd /root/workspace/demo-gui/SLAM_Nav
    python3 repub_twist2canine.py
    ```
 
@@ -534,12 +497,12 @@ curl http://localhost:7999/health
 
 ```bash
 # 터미널 A: Nav2 실행
-cd zed-ros2-workspace
+cd oak-camera
 ./run_nav2_outdoor.sh
 
 # 터미널 B: 데모 GUI 실행
-cd demo/docker && ./exec.sh
-cd /root/workspace/demo
+cd demo-gui/docker && ./exec.sh
+cd /root/workspace/demo-gui
 python3 _22_usertracking_gui.py
 ```
 
@@ -553,18 +516,18 @@ python3 _22_usertracking_gui.py
 
 ```bash
 # 터미널 A: Nav2 실행 (실내 맵 사용)
-cd zed-ros2-workspace
+cd oak-camera
 ./run_nav2_indoor.sh
 
 # 터미널 B: 키보드로 로봇 위치 초기화
-cd demo/docker && ./exec.sh
-cd /root/workspace/SLAM_Nav
+cd demo-gui/docker && ./exec.sh
+cd /root/workspace/demo-gui/SLAM_Nav
 python3 keyboard_teleop.py
 # RViz에서 로봇 위치가 맞으면 Ctrl+C
 
 # 터미널 C: 데모 GUI 실행
-cd demo/docker && ./exec.sh
-cd /root/workspace/demo
+cd demo-gui/docker && ./exec.sh
+cd /root/workspace/demo-gui
 python3 _21_patrol_gui.py
 ```
 
@@ -573,8 +536,8 @@ python3 _21_patrol_gui.py
 카메라에 보이는 것을 AI가 설명합니다.
 
 ```bash
-cd demo/docker && ./exec.sh
-cd /root/workspace/demo
+cd demo-gui/docker && ./exec.sh
+cd /root/workspace/demo-gui
 python3 _20_vlm_gui.py
 ```
 
@@ -633,7 +596,7 @@ python3 _20_vlm_gui.py
 Main script 종료 후 카메라 서버를 재시작해야 합니다:
 
 ```bash
-./zed-ros2-workspace/run_oak_server.sh
+./oak-camera/run_oak_server.sh
 ```
 
 ### LiDAR / Pan-Tilt이 안 된다
@@ -641,8 +604,8 @@ Main script 종료 후 카메라 서버를 재시작해야 합니다:
 USB를 뽑았다가 다시 꽂은 후:
 
 ```bash
-./zed-ros2-workspace/run_lidar.sh     # LiDAR 재시작
-./zed-ros2-workspace/run_pantilt.sh   # Pan-Tilt 재시작
+./oak-camera/run_lidar.sh     # LiDAR 재시작
+./oak-camera/run_pantilt.sh   # Pan-Tilt 재시작
 ```
 
 ### 컨테이너에 직접 들어가기
@@ -651,28 +614,22 @@ USB를 뽑았다가 다시 꽂은 후:
 
 ```bash
 # Demo GUI 컨테이너
-cd demo/docker && ./exec.sh
+cd demo-gui/docker && ./exec.sh
 
-# OAK-ROS2 컨테이너
-cd zed-ros2-workspace/docker && ./exec.sh
+# OAK-Camera 컨테이너
+cd oak-camera/docker && ./exec.sh
 
-# Hailo Inference 컨테이너
+# Hailo Inference + Face Recognition 컨테이너
 cd hailo-inference/docker && ./exec.sh
 
-# Nav2 컨테이너
+# Nav2 + RPLidar 컨테이너
 cd nav2/docker && ./exec.sh
-
-# RPLidar 컨테이너
-cd rplidar/docker && ./exec.sh
 
 # VLM 컨테이너
 cd vlm/docker && ./exec.sh
 
 # TTS-STT 컨테이너
 cd tts-stt/docker && ./exec.sh
-
-# Face Recognition 컨테이너
-cd face-recognition/docker && ./exec.sh
 ```
 
 ---
@@ -682,29 +639,27 @@ cd face-recognition/docker && ./exec.sh
 ```
 ┌─ AMD Ryzen AI 350 + Ubuntu 24.04 ──────────────────────────────────────┐
 │                                                                         │
-│  ┌─ OAK-ROS2 Container ──────────┐  ┌─ Hailo Inference Container ───┐ │
+│  ┌─ OAK-Camera Container ────────┐  ┌─ Hailo Inference Container ───┐ │
 │  │ OAK-D Pro W Camera             │  │ Hailo Inference Server :8003   │ │
 │  └────────────────────────────────┘  │  ├─ yolov8m_pose (포즈)        │ │
 │                                       │  └─ scrfd_10g   (얼굴 검출)    │ │
-│  ┌─ Demo GUI Container ──────────┐  └───────────────────────────────┘ │
-│  │ PyQt5 GUI + Pan-Tilt 서보     │                                     │
-│  │ 순찰 / 사용자추적              │  ┌─ TTS-STT Container ───────────┐ │
-│  └────────────────────────────────┘  │ TTS (Sherpa-ONNX)    :8002    │ │
-│                                       │ STT (Whisper)        :8001    │ │
-│  ┌─ Nav2 Container ──────────────┐  └───────────────────────────────┘ │
-│  │ Nav2 / AMCL (자율 주행)        │                                     │
-│  └────────────────────────────────┘  ┌─ Face Recognition Container ──┐ │
-│                                       │ InsightFace ArcFace    :7999   │ │
-│  ┌─ RPLidar Container ──────────┐  │ 검출: Hailo (via :8003)       │ │
-│  │ RPLidar (장애물 감지)          │  │ 임베딩: CPU                    │ │
-│  └────────────────────────────────┘  └───────────────────────────────┘ │
+│  ┌─ Demo GUI Container ──────────┐  │ Face Recognition       :7999   │ │
+│  │ PyQt5 GUI + Pan-Tilt 서보     │  │  └─ ArcFace 임베딩 (CPU)      │ │
+│  │ 순찰 / 사용자추적              │  └───────────────────────────────┘ │
+│  │ CANINE Middleware (ROS 2)      │                                     │
+│  └────────────────────────────────┘  ┌─ TTS-STT Container ───────────┐ │
+│                                       │ TTS (Sherpa-ONNX)    :8002    │ │
+│  ┌─ Nav2 + RPLidar Container ────┐  │ STT (Whisper)        :8001    │ │
+│  │ Nav2 / AMCL (자율 주행)        │  └───────────────────────────────┘ │
+│  │ RPLidar (장애물 감지)          │                                     │
+│  └────────────────────────────────┘  ┌─ VLM Container (비활성) ──────┐ │
+│                                       │ Gemma-3-4b-it-mm       :8000  │ │
+│  ┌─ /dev/shm ────────────────────┐  │ Ryzen AI NPU / CPU fallback   │ │
+│  │ zed_image_shm (BGR 1920×1080) │  └───────────────────────────────┘ │
+│  │ zed_body_shm  (포즈 트래킹)    │                                     │
+│  └────────────────────────────────┘                                     │
 │                                                                         │
-│  ┌─ VLM Container (비활성) ──────┐  ┌─ /dev/shm ────────────────────┐ │
-│  │ Gemma-3-4b-it-mm       :8000  │  │ zed_image_shm (BGR 1920×1080) │ │
-│  │ Ryzen AI NPU / CPU fallback   │  │ zed_body_shm  (포즈 트래킹)    │ │
-│  └────────────────────────────────┘  └───────────────────────────────┘ │
-│                                                                         │
-│  CANINE Middleware (Host via OAK-ROS2 exec)                             │
+│  CANINE Middleware (Demo GUI Container)                                 │
 │          ▲ ROS 2 Topics: canine_states / canine_command                 │
 └──────────┼──────────────────────────────────────────────────────────────┘
            │
@@ -764,11 +719,9 @@ CPU ─────────┬─ InsightFace ArcFace (얼굴 임베딩)
 
 | 컨테이너 | 문서 |
 |----------|------|
-| **OAK-ROS2** | [docs/zed-ros2-container.md](docs/zed-ros2-container.md) ※ 폴더명 `zed-ros2-workspace`는 레거시 |
-| **Hailo Inference** | `hailo-inference/` — Hailo-10 AI 가속기 TCP 서버 |
-| **Nav2** | `nav2/` — ROS 2 Nav2 자율 주행 |
-| **RPLidar** | `rplidar/` — LiDAR 장애물 감지 |
-| **Demo GUI** | `demo/` — PyQt5 데모 스크립트 + Pan-Tilt 서보 |
+| **OAK-Camera** | `oak-camera/` — OAK-D Pro W 카메라 서버 |
+| **Hailo Inference + Face Recognition** | `hailo-inference/` — Hailo-10 AI 가속기 TCP 서버 + 얼굴 인식 |
+| **Nav2 + RPLidar** | `nav2/` — ROS 2 Nav2 자율 주행 + LiDAR 장애물 감지 |
+| **Demo GUI** | `demo-gui/` — PyQt5 데모 스크립트 + CANINE Middleware + Pan-Tilt 서보 |
 | **VLM** | [docs/vlm-container.md](docs/vlm-container.md) |
 | **TTS-STT** | [docs/tts-stt-container.md](docs/tts-stt-container.md) |
-| **Face Recognition** | [docs/face-recognition-container.md](docs/face-recognition-container.md) |
