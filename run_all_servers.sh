@@ -125,4 +125,4 @@ cat > "$CONFIG_FILE" << EOF
 EOF
 
 echo "[*] Opening Terminator with all servers..."
-terminator --config "$CONFIG_FILE" --layout servers
+DBUS_SESSION_BUS_ADDRESS="" terminator --config "$CONFIG_FILE" --layout servers
