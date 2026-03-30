@@ -3,7 +3,7 @@ services:
     container_name: rplidar
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.rplidar
     image: rplidar-jazzy:latest
     volumes:
       - "../../:/root/workspace"

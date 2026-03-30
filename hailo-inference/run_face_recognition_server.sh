@@ -7,11 +7,11 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="${SCRIPT_DIR}/docker"
 CONTAINER_NAME="face-recognition"
-DOCKER_COMPOSE_FILE="docker-compose.yaml"
+DOCKER_COMPOSE_FILE="docker-compose-face.yaml"
 # When hailo_inference_server is running (recommended), use --use-hailo-server
 # to share the Hailo device with oak_server and other services.
 # Without it, face_recognition opens VDevice directly (may conflict with oak_server).
-COMMAND="cd /root/workspace/face-recognition && python3 face_recognition_server.py --use-hailo-server --warmup 5"
+COMMAND="cd /root/workspace/hailo-inference && python3 face_recognition_server.py --use-hailo-server --warmup 5"
 
 
 # Must run compose from docker dir so volume ../../ resolves to project root
@@ -29,16 +29,8 @@ export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 xhost +si:localuser:root 2>/dev/null || true
 
 # Start the container only if it is not already running
-if docker ps -q -f name=$CONTAINER_NAME -f status=running | grep -q .; then
-  echo "[*] Container $CONTAINER_NAME is already running."
-elif docker ps -a -q -f name=$CONTAINER_NAME | grep -q .; then
-  echo "[*] Starting existing $CONTAINER_NAME container..."
-  docker start $CONTAINER_NAME
-else
-  echo "[*] Creating and starting $CONTAINER_NAME container..."
-  docker compose -f docker-compose.yaml -p $CONTAINER_NAME up -d
-fi
-
+echo "[*] Starting $CONTAINER_NAME container..."
+docker compose -f docker-compose-face.yaml up -d || true
 # Run the server inside the container (foreground; Ctrl+C stops the server)
 echo "[*] Running face_recognition_server.py in container..."
 docker exec -it $CONTAINER_NAME bash -c "$COMMAND"

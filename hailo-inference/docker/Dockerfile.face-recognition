@@ -50,7 +50,7 @@ WORKDIR /root/workspace
 RUN git config --global --add safe.directory /root/workspace
 
 # Entrypoint
-COPY entrypoint.sh /entrypoint.sh
+COPY entrypoint-face.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]

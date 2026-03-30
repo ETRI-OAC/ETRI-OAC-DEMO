@@ -4,13 +4,11 @@ import time
 from canineStruct import Command, CanineFSM
 from rosCommunication import ROSCommunication
 from pantiltManager import pantiltManager
-from zedManager import zedManager
 from sharedMemory import SharedMemoryManager
 # from colorama import Fore, Style
 import math
 
 shm = SharedMemoryManager()
-cam = zedManager(shm)
 
 def rosCommunicationThread(args=None):
     rclpy.init(args=args)
@@ -69,9 +67,6 @@ def pantiltMotorControlThread(args=None):
         pantilt.set_position()
         local_time += 0.02
         time.sleep(0.01) 
-
-cam.get_image()  # Save images to shm.left_image[0], shm.right_image[0]
-cam.save_image() # Save images to zzed_image directory
 
 # thread_ros_communication = threading.Thread(target=rosCommunicationThread)
 # thread_ros_communication.start()

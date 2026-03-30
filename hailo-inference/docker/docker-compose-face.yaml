@@ -3,7 +3,7 @@ services:
     container_name: face-recognition
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.face-recognition
     image: face-recognition:latest
     volumes:
       - "/tmp/.X11-unix:/tmp/.X11-unix:ro"

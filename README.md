@@ -26,7 +26,7 @@ graph TB
             LIDAR["RPLidar<br/>장애물 감지<br/>USB Serial"]
         end
 
-        MW["CANINE Middleware<br/>로봇 제어 (50Hz)<br/>ROS 2 + Dynamixel<br/>(Demo GUI Container)"]
+        MW["CANINE Middleware<br/>로봇 제어 (50Hz)<br/>ROS 2 + Dynamixel<br/>(호스트 직접 실행)"]
 
         subgraph VLM_C["VLM Container (비활성)"]
             VLM["Gemma-3-4b-it-mm<br/>onnxruntime-genai<br/>Ryzen AI NPU<br/>REST :8000"]
@@ -410,22 +410,21 @@ docker load < vlm-ryzenai.tar.gz
 ./run_all_servers.sh
 ```
 
-6개의 서버가 tmux 분할 화면에서 동시에 시작됩니다:
+8개의 서버가 Terminator 분할 화면에서 동시에 시작됩니다:
 
 | 패널 | 서버 | 포트 |
 |------|------|------|
-| 0 | Hailo Inference Server + Face Recognition (AI 가속 + 얼굴인식) | 8003, 7999 |
+| 0 | Hailo Inference Server (AI 가속 — 포즈 + 얼굴검출) | 8003 |
 | 1 | STT (Whisper 음성인식) | 8001 |
 | 2 | TTS (한국어 음성합성) | 8002 |
-| 3 | CANINE Middleware (로봇 제어) | — |
-| 4 | RPLidar (장애물 감지) | — |
-| 5 | Pan-Tilt (카메라 서보) | — |
-| 6 | OAK-D Camera (영상 + 포즈) | — |
+| 3 | Face Recognition Server (얼굴 임베딩·인식) | 7999 |
+| 4 | CANINE Middleware (로봇 제어, **호스트에서 직접 실행**) | — |
+| 5 | RPLidar (장애물 감지) | — |
+| 6 | Pan-Tilt (카메라 서보) | — |
+| 7 | OAK-D Camera (영상 + 포즈) | — |
 
 > **VLM은 비활성 상태입니다** — Ryzen AI SDK 1.7.0이 Krackan NPU를 아직 지원하지 않습니다.
 > Nav2는 별도로 실행합니다: `./oak-camera/run_nav2_indoor.sh` 또는 `run_nav2_outdoor.sh`
-
-> **tmux 사용법:** `Ctrl+B` → 방향키로 패널 이동, `Ctrl+B` → `D`로 빠져나오기
 
 ### 방법 B: 하나씩 실행 (문제 해결 시)
 
@@ -517,30 +516,41 @@ cd /root/workspace/demo-gui
 python3 _22_usertracking_gui.py
 ```
 
+### 얼굴 인식 데모 (독립 실행)
+
+카메라 앞의 사람을 감지하고 등록된 얼굴을 인식합니다. Nav2·맵 불필요.
+
+```bash
+./face_demo.sh
+```
+
+gnome-terminal 4탭으로 자동 실행됩니다:
+- **Hailo Server** — 포즈·얼굴 검출 AI 서버
+- **Face Server** — ArcFace 임베딩·인식 서버
+- **OAK Camera** — 카메라 + 포즈 추정
+- **Face Recognition GUI** — PyQt5 얼굴인식 데모 (`face_recognition_demo.py`)
+
+> **사전 준비:** 얼굴 등록 필요 → `hailo-inference/register_face.py` 실행
+
 ### 실내 데모: 순찰 + 얼굴 인식 (맵 필요)
 
 로봇이 정해진 경로를 순찰하면서 사람을 만나면 인식합니다.
 
 > **사전 준비:**
 > - 실내 맵이 필요합니다. 맵 만드는 방법은 [docs/slam-map.md](docs/slam-map.md) 참고
-> - 얼굴 인식에는 사전 등록이 필요합니다: [docs/face-recognition-container.md](docs/face-recognition-container.md) 참고
+> - 얼굴 인식에는 사전 등록이 필요합니다: `hailo-inference/register_face.py` 실행
 
 ```bash
-# 터미널 A: Nav2 실행 (실내 맵 사용)
-cd oak-camera
-./run_nav2_indoor.sh
-
-# 터미널 B: 키보드로 로봇 위치 초기화
-cd demo-gui/docker && ./exec.sh
-cd /root/workspace/demo-gui/SLAM_Nav
-python3 keyboard_teleop.py
-# RViz에서 로봇 위치가 맞으면 Ctrl+C
-
-# 터미널 C: 데모 GUI 실행
-cd demo-gui/docker && ./exec.sh
-cd /root/workspace/demo-gui
-python3 _21_patrol_gui.py
+# run_all_servers.sh 실행 중, 로봇 Walk 모드, Twist republisher 실행 후:
+./patrol.sh
 ```
+
+Terminator 2분할 화면으로 자동 실행됩니다:
+- **왼쪽 위** — Nav2 Indoor (지도 기반 항법)
+- **왼쪽 아래** — Twist Republisher (cmd_vel → CANINE 명령)
+- **오른쪽** — Patrol GUI (순찰 + 얼굴 인식)
+
+> RViz에서 로봇 초기 위치(2D Pose Estimate) 설정 필요
 
 ### VLM 데모: 장면 설명
 
@@ -670,7 +680,7 @@ cd tts-stt/docker && ./exec.sh
 │  │ zed_body_shm  (포즈 트래킹)    │                                     │
 │  └────────────────────────────────┘                                     │
 │                                                                         │
-│  CANINE Middleware (Demo GUI Container)                                 │
+│  CANINE Middleware (호스트 직접 실행)                                     │
 │          ▲ ROS 2 Topics: canine_states / canine_command                 │
 └──────────┼──────────────────────────────────────────────────────────────┘
            │

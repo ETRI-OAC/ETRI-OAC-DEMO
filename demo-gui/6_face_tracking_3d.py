@@ -12,10 +12,10 @@ sys.path.append(os.path.join(PROJECT_ROOT, 'oak-camera'))
 from clients.zed_client import ZedClient
 from clients.face_recognition_client import FaceRecognitionClient
 from clients.vlm_client import VLLMClient
-from zed_wrapper.body_tracking_visualizer import visualize_bodies_2d
+from clients.body_tracking_visualizer import visualize_bodies_2d
 from openpath_CANINE_middleware.python_scripts.pantiltManager import pantiltManager
 from utils.pid import PIDControllerClass
-from utils.transformations import dirvec_to_quat, rotation_matrix_to_quaternion
+from utils.transformations import rotation_matrix_to_quaternion
 
 import rclpy
 from rclpy.node import Node

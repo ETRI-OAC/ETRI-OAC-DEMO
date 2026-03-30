@@ -10,7 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     python-is-python3 \
     build-essential \
+    cmake \
     git \
+    qtbase5-dev \
+    libqt5serialport5-dev \
     libgl1 \
     libglib2.0-0 \
     libxcb-xinerama0 \

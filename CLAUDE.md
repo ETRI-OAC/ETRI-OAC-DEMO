@@ -8,14 +8,16 @@ Robotics demo system on AMD Ryzen AI 350 (Ubuntu 24.04, no CUDA/GPU) integrating
 
 ## Architecture
 
-Four Docker containers communicate over host network:
+Six Docker containers communicate over host network:
 
-| Container | Base Image | Purpose | Port |
-|-----------|-----------|---------|------|
-| **OAK-ROS2** | `ros:jazzy-ros-base-noble` | ROS 2, Nav2, DepthAI (OAK-D Pro W), Hailo-10 M.2#2 (YOLOv8s-pose), CANINE middleware, LiDAR, pan-tilt | ROS 2 topics |
-| **VLM** | `ubuntu:24.04` + ONNX RT | Gemma-3-4b-it-mm on Ryzen AI 350 NPU | 8000 |
-| **TTS-STT** | `ubuntu:24.04` | Sherpa-ONNX Korean TTS + Whisper STT (auto: Hailo-10[1] if 2개, else CPU) | TTS: 8002, STT: 8001 |
-| **Face Recognition** | `ubuntu:24.04` | InsightFace ArcFace (detection: Hailo-10 공유, embedding: CPU) | 7999 |
+| Container (dir) | Base Image | Purpose | Port |
+|-----------------|-----------|---------|------|
+| **demo-gui** (`demo-gui/`) | `ros:jazzy-ros-base-noble` | PyQt5 GUI demos, CANINE middleware, Nav2 SLAM config, client libs | ROS 2 topics |
+| **oak-camera** (`oak-camera/`) | `ros:jazzy-ros-base-noble` | OAK-D Pro W (DepthAI), Hailo-10 pose (YOLOv8m-pose), LiDAR, pan-tilt | ROS 2 topics |
+| **hailo-inference** (`hailo-inference/`) | `ubuntu:24.04` | Hailo-10 multi-context inference server, face recognition (InsightFace ArcFace) | 8003, 7999 |
+| **nav2** (`nav2/`) | `ros:jazzy-ros-base-noble` | Nav2, AMCL, RPLidar — separate from camera | ROS 2 topics |
+| **vlm** (`vlm/`) | `ubuntu:24.04` + ONNX RT | Gemma-3-4b-it-mm on Ryzen AI 350 NPU | 8000 |
+| **tts-stt** (`tts-stt/`) | `ubuntu:24.04` | Sherpa-ONNX Korean TTS + Whisper STT (auto: Hailo-10[1] if 2개, else CPU) | TTS: 8002, STT: 8001 |
 
 ### Shared Memory IPC (`/dev/shm`)
 
@@ -48,7 +50,7 @@ Lock protocol: writer sets lock=1 before writing, reader busy-waits with 1ms sle
 | `pantilt_state` | — | Pan-tilt servo position feedback |
 | `pantilt_command` | — | Pan-tilt target position |
 
-### CANINE Middleware (`openpath_CANINE_middleware/python_scripts/` (project root))
+### CANINE Middleware (`demo-gui/openpath_CANINE_middleware/python_scripts/`)
 
 Three-thread architecture in `main.py`:
 1. **rosCommunicationThread** — ROS 2 node subscribing to `canine_states`, publishing `canine_command`
@@ -60,12 +62,16 @@ FSM states: `INITIAL, INITIALIZING, READY, HOME_UP, HOME_DOWN, EMERGENCY_STOP, S
 
 ## Common Commands
 
-### Build containers (first-time setup, run in order)
+### Build containers (first-time setup)
 ```bash
-cd zed-ros2-workspace/docker && ./build.sh          # OAK-ROS2
-cd vlm/docker && ./compose_up.sh                     # VLM (Ctrl+C after build)
-cd tts-stt/docker && ./compose_up.sh                 # TTS-STT (Ctrl+C after build)
-cd face-recognition/docker && ./compose_up.sh        # Face Recognition (Ctrl+C after build)
+./build_all_docker.sh   # Build all 6 containers at once
+# Or individually:
+cd demo-gui/docker && ./build.sh
+cd oak-camera/docker && ./build.sh
+cd hailo-inference/docker && ./build.sh   # requires hailort_5.2.0_amd64.deb + .whl in docker/
+cd nav2/docker && ./build.sh
+cd vlm/docker && ./compose_up.sh          # Ctrl+C after build
+cd tts-stt/docker && ./compose_up.sh      # Ctrl+C after build
 ```
 
 ### Launch all servers
@@ -75,7 +81,7 @@ cd face-recognition/docker && ./compose_up.sh        # Face Recognition (Ctrl+C 
 
 ### Enter a running container
 ```bash
-cd {service}/docker && ./exec.sh    # Works for zed-ros2-workspace, vlm, tts-stt, face-recognition
+cd {service}/docker && ./exec.sh    # Works for demo-gui, oak-camera, hailo-inference, nav2, vlm, tts-stt
 ```
 
 ### Test individual services (run inside respective container)
@@ -83,7 +89,7 @@ cd {service}/docker && ./exec.sh    # Works for zed-ros2-workspace, vlm, tts-stt
 python vlm/test_client.py
 python tts-stt/tts_client.py
 python tts-stt/stt_client.py
-python face-recognition/face_recognition_client.py
+python hailo-inference/face_recognition_client.py
 ```
 
 ### Cleanup
@@ -95,30 +101,31 @@ python face-recognition/face_recognition_client.py
 ### Run demos (after `run_all_servers.sh` + middleware Walk mode + twist republisher)
 ```bash
 # Indoor patrol (requires pre-built map + localization init)
-cd zed-ros2-workspace && ./run_nav2_indoor.sh
-cd demo && python _21_patrol_gui.py
+cd oak-camera && ./run_nav2_indoor.sh
+cd demo-gui && python _21_patrol_gui.py
 
 # Outdoor user tracking (no map needed)
-cd zed-ros2-workspace && ./run_nav2_outdoor.sh
-cd demo && python _22_usertracking_gui.py
+cd oak-camera && ./run_nav2_outdoor.sh
+cd demo-gui && python _22_usertracking_gui.py
 ```
 
 ## Key Code Locations
 
-- **Client libraries** (`zed-ros2-workspace/clients/`): Shared Python clients used by demo scripts to talk to each service — `zed_client.py` (shared memory), `vlm_client.py`, `tts_client.py`, `stt_client.py`, `face_recognition_client.py`
-- **Demo scripts** (`demo/`): PyQt5 GUI applications (`_20_*` through `_22_*`, `23_*`) and incremental test scripts (`1_*` through `9_*`)
-- **GUI framework** (`zed-ros2-workspace/gui/`): `gui.py` (PyQt5 layout), `gui_threads.py` (QThread workers for non-blocking service calls)
-- **Nav2 config** (`SLAM_Nav/`): `config/nav2_params.yaml` (AMCL omni-directional model), `config/following_params.yaml` + `config/bt_following.xml` (outdoor following behavior tree), `map/map_etri.yaml` (saved indoor map)
-- **Twist-to-CANINE bridge** (`SLAM_Nav/repub_twist2canine.py`): Converts Nav2 `cmd_vel` Twist messages to CANINECommand (linear vx/vy + angular ωz)
-- **Camera server** (`zed-ros2-workspace/oak_wrapper/oak_server.py`): Opens OAK-D Pro W camera via DepthAI, runs on-device MoveNet pose estimation, writes frames + body tracking to `/dev/shm`
-- **Camera utilities** (`zed-ros2-workspace/oak_wrapper/`): `person_tracker.py` (IoU-based SORT tracker for persistent body IDs), `head_pose_estimator.py` (geometric head orientation + bbox from COCO keypoints)
-- **PID utilities** (`zed-ros2-workspace/utils/pid.py`): PID controller used for real-time pan-tilt face tracking
-- **Service servers**: `face-recognition/face_recognition_server.py`, `tts-stt/tts_server.py`, `tts-stt/stt_server.py`, `vlm/run_vlm_server.sh`
+- **Client libraries** (`demo-gui/clients/`): Shared Python clients used by demo scripts — `zed_client.py` (shared memory), `vlm_client.py`, `tts_client.py`, `stt_client.py`, `face_recognition_client.py`
+- **Demo scripts** (`demo-gui/`): PyQt5 GUI applications (`_20_*` through `_22_*`, `23_*`) and incremental test scripts (`1_*` through `9_*`)
+- **GUI framework** (`demo-gui/gui.py`, `demo-gui/gui_threads.py`): PyQt5 layout + QThread workers for non-blocking service calls
+- **Nav2 config** (`demo-gui/SLAM_Nav/`): `config/nav2_params.yaml` (AMCL omni-directional model), `config/following_params.yaml` + `config/bt_following.xml` (outdoor following behavior tree), `map/map_etri.yaml` (saved indoor map)
+- **Twist-to-CANINE bridge** (`demo-gui/SLAM_Nav/repub_twist2canine.py`): Converts Nav2 `cmd_vel` Twist messages to CANINECommand (linear vx/vy + angular ωz)
+- **Camera server** (`oak-camera/oak_wrapper/oak_server.py`): Opens OAK-D Pro W camera via DepthAI, writes frames + body tracking to `/dev/shm`
+- **Camera utilities** (`oak-camera/oak_wrapper/`): `person_tracker.py` (IoU-based SORT tracker for persistent body IDs), `head_pose_estimator.py` (geometric head orientation + bbox from COCO keypoints)
+- **Hailo inference server** (`hailo-inference/hailo_inference_server.py`): Multi-context TCP server (port 8003) serving pose + face detection with no per-request context switch overhead
+- **PID utilities** (`demo-gui/utils/pid.py`): PID controller used for real-time pan-tilt face tracking
+- **Service servers**: `hailo-inference/face_recognition_server.py`, `tts-stt/tts_server.py`, `tts-stt/stt_server.py`, `vlm/run_vlm_server.sh`
 - **Docker configs**: Each service has a `docker/` subdirectory with Dockerfile, compose file, and shell scripts
 
 ## Demo Script Progression
 
-Test scripts in `demo/` build incrementally:
+Test scripts in `demo-gui/` build incrementally:
 - `1_middleware.sh` → CANINE middleware connection
 - `3_*` → Pan-tilt servo test
 - `4_*` → ZED camera capture
@@ -168,15 +175,17 @@ python3 -m venv ~/opr-venv && source ~/opr-venv/bin/activate
 
 ## Development Notes
 
-- Camera shared memory connection breaks when main scripts exit; restart camera server (`./zed-ros2-workspace/run_oak_server.sh`) before re-running demo scripts
+- Camera shared memory connection breaks when main scripts exit; restart camera server (`./oak-camera/run_oak_server.sh`) before re-running demo scripts
 - VLM server takes up to 5 minutes to start; first query requires network connectivity. VLM container is reused on restart (model cached inside container)
-- LiDAR/pan-tilt recovery after disconnect: physically re-plug USB, then run `./zed-ros2-workspace/run_lidar.sh` or `./zed-ros2-workspace/run_pantilt.sh`
-- Face recognition requires pre-registration via `face-recognition/register_face.py` (stores pickled embeddings in `face-recognition/database/`)
+- LiDAR/pan-tilt recovery after disconnect: physically re-plug USB, then run `./oak-camera/run_lidar.sh` or `./oak-camera/run_pantilt.sh`
+- Face recognition requires pre-registration via `hailo-inference/register_face.py` (stores pickled embeddings in `hailo-inference/database/`)
 - All containers mount project root to `/root/workspace/` — code edits on host are live inside containers
 - Nav2 uses omni-directional motion model (`nav2_amcl::OmniMotionModel`) since the quadruped can strafe
 - Korean TTS model files are stored via Git LFS (`tts-stt/tts_model/`); run `git lfs pull` after clone
-- SLAM map building: `docs/slam-map.md` (full procedure) or `SLAM_Nav/commands.txt` (quick reference)
-- Old Jetson/L4T Dockerfile kept as `Dockerfile.l4t-humble` for reference; active build uses `Dockerfile.ubuntu-jazzy`
-- Old ZED server kept in `zed_wrapper/` for reference; active camera server is `oak_wrapper/oak_server.py`
+- SLAM map building: `docs/slam-map.md` (full procedure) or `demo-gui/SLAM_Nav/commands.txt` (quick reference)
+- Old Jetson/L4T Dockerfile kept as `oak-camera/docker/Dockerfile.l4t-humble` for reference; active build uses `Dockerfile.ubuntu-jazzy`
+- Old ZED server kept in `oak-camera/zed_wrapper/` for reference; active camera server is `oak-camera/oak_wrapper/oak_server.py`
 - Body tracking uses YOLOv8m-pose (COCO-17) on Hailo-10 accelerator; OAK-D Pro W provides camera frames only (no on-device NN); keypoint index 0 = NOSE (used for pan-tilt); head orientation estimated geometrically from eye/ear keypoints
+- Hailo inference server runs in multi-context mode (latest change): eliminates ~400ms context switch overhead between pose and face detection models
+- `hailo-inference/docker/` requires `hailort_5.2.0_amd64.deb` (copy from `oak-camera/docker/`) and `hailort-5.2.0-cp312-cp312-linux_x86_64.whl` before building
 - Per-service container documentation: `docs/zed-ros2-container.md`, `docs/vlm-container.md`, `docs/tts-stt-container.md`, `docs/face-recognition-container.md`
