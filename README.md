@@ -26,7 +26,7 @@ graph TB
             LIDAR["RPLidar<br/>장애물 감지<br/>USB Serial"]
         end
 
-        MW["CANINE Middleware<br/>로봇 제어 (50Hz)<br/>ROS 2 + Dynamixel<br/>(호스트 직접 실행)"]
+        MW["CANINE Middleware<br/>로봇 제어 (50Hz)<br/>ROS 2 + Dynamixel<br/>(Demo GUI Container)"]
 
         subgraph VLM_C["VLM Container (비활성)"]
             VLM["Gemma-3-4b-it-mm<br/>onnxruntime-genai<br/>Ryzen AI NPU<br/>REST :8000"]
@@ -418,7 +418,7 @@ docker load < vlm-ryzenai.tar.gz
 | 1 | STT (Whisper 음성인식) | 8001 |
 | 2 | TTS (한국어 음성합성) | 8002 |
 | 3 | Face Recognition Server (얼굴 임베딩·인식) | 7999 |
-| 4 | CANINE Middleware (로봇 제어, **호스트에서 직접 실행**) | — |
+| 4 | CANINE Middleware (로봇 제어) | — |
 | 5 | RPLidar (장애물 감지) | — |
 | 6 | Pan-Tilt (카메라 서보) | — |
 | 7 | OAK-D Camera (영상 + 포즈) | — |
@@ -680,7 +680,7 @@ cd tts-stt/docker && ./exec.sh
 │  │ zed_body_shm  (포즈 트래킹)    │                                     │
 │  └────────────────────────────────┘                                     │
 │                                                                         │
-│  CANINE Middleware (호스트 직접 실행)                                     │
+│  CANINE Middleware (Demo GUI Container)                                  │
 │          ▲ ROS 2 Topics: canine_states / canine_command                 │
 └──────────┼──────────────────────────────────────────────────────────────┘
            │
