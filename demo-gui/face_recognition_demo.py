@@ -111,8 +111,11 @@ class FaceRecognitionNode(Node):
                     if face_img is not None:
                         looking = self._is_looking(body)
                         if looking:
-                            result, _ = self.face_client.recognize(face_img, measure_time=False)
-                            name, sim = result['name'], result['similarity']
+                            try:
+                                result, _ = self.face_client.recognize(face_img, measure_time=False)
+                                name, sim = result['name'], result['similarity']
+                            except Exception:
+                                name, sim = "서버 연결 중...", 0.0
                             self._draw_face_result(disp, bbox, body['id'], name, sim, "looking")
                             self.not_looking_cnt = 0
                             self.face_recognition_cnt += 1
@@ -127,7 +130,10 @@ class FaceRecognitionNode(Node):
                                 else:
                                     final = "Unknown"
                                     tts_msg = "등록되지 않은 인물입니다."
-                                self.tts_client.speak(text=tts_msg)
+                                try:
+                                    self.tts_client.speak(text=tts_msg)
+                                except Exception:
+                                    pass
                                 self._add_tts_log(tts_msg)
                                 self.face_id_memory[body['id']] = final
                                 self.status_text = f"인식 완료: {final}"
@@ -140,7 +146,10 @@ class FaceRecognitionNode(Node):
                             self.not_looking_cnt += 1
                             if self.not_looking_cnt > 60:
                                 tts_msg = "카메라를 응시해주세요."
-                                self.tts_client.speak(text=tts_msg)
+                                try:
+                                    self.tts_client.speak(text=tts_msg)
+                                except Exception:
+                                    pass
                                 self._add_tts_log(tts_msg)
                                 self.not_looking_cnt = 0
                                 self.face_recognition_cnt = 0
