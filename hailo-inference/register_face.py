@@ -54,7 +54,13 @@ def main():
                        help='Path to the database file')
     parser.add_argument('--threshold', type=float, default=0.5,
                        help='Similarity threshold')
-    
+    parser.add_argument('--use-hailo-server', action='store_true',
+                       help='Use centralized hailo_inference_server for face detection')
+    parser.add_argument('--hailo-server-host', type=str, default='localhost',
+                       help='Hailo inference server host')
+    parser.add_argument('--hailo-server-port', type=int, default=8003,
+                       help='Hailo inference server port')
+
     args = parser.parse_args()
     
     # Validate arguments
@@ -72,7 +78,12 @@ def main():
     
     # Initialize recognizer
     print("\nInitializing Face Recognizer (ArcFace)...")
-    recognizer = FaceRecognizer(similarity_threshold=args.threshold)
+    recognizer = FaceRecognizer(
+        similarity_threshold=args.threshold,
+        use_hailo_server=args.use_hailo_server,
+        hailo_server_host=args.hailo_server_host,
+        hailo_server_port=args.hailo_server_port,
+    )
     
     # # Load existing database if exists
     # if os.path.exists(args.database):

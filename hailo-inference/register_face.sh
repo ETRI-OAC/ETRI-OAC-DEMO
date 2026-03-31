@@ -16,4 +16,4 @@ cd "$DOCKER_DIR"
 docker compose -f docker-compose-face.yaml up -d 2>/dev/null || true
 
 echo "[*] Registering faces in container ($ARGS)..."
-docker exec -it $CONTAINER_NAME bash -c "cd /root/workspace/hailo-inference && python3 register_face.py $ARGS"
+docker exec -it $CONTAINER_NAME bash -c "cd /root/workspace/hailo-inference && python3 register_face.py --use-hailo-server $ARGS"
