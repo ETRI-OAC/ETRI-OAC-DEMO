@@ -124,12 +124,13 @@ def recognize_face():
                 "error": "Face recognizer not initialized"
             }), 500
 
+        lmk_info = f"landmarks={'yes' if landmarks_5 is not None else 'no'}"
         name, similarity = recognizer.recognize(face_image, landmarks_5=landmarks_5)
 
         if name != "Unknown":
-            print(f"[RECOGNIZE] {name} (similarity: {similarity:.3f}) | known: {list(recognizer.known_faces.keys())}")
+            print(f"[RECOGNIZE] {name} (similarity: {similarity:.3f}) | {lmk_info}")
         else:
-            print(f"[RECOGNIZE] Unknown (best: {similarity:.3f}) | known: {list(recognizer.known_faces.keys())}")
+            print(f"[RECOGNIZE] Unknown (best: {similarity:.3f}) | {lmk_info}")
 
         return jsonify({
             "success": True,
