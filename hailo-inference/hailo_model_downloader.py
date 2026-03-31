@@ -11,8 +11,12 @@ from pathlib import Path
 from typing import Optional
 
 # Default model directory: <project_root>/hailo_models/
-# oak_wrapper/ → oak-camera/ → project_root/
-DEFAULT_MODEL_DIR = Path(__file__).parent.parent / "hailo_models"
+# Works regardless of which copy is imported (hailo-inference/ or oak-camera/oak_wrapper/)
+_THIS_DIR = Path(__file__).resolve().parent
+if _THIS_DIR.name == "oak_wrapper":
+    DEFAULT_MODEL_DIR = _THIS_DIR.parent.parent / "hailo_models"
+else:
+    DEFAULT_MODEL_DIR = _THIS_DIR.parent / "hailo_models"
 
 # S3 base URL for pre-compiled HEF files
 _S3_BASE = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v5.2.0"
