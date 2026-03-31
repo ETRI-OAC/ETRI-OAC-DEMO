@@ -117,46 +117,11 @@ class FaceRecognizer:
         Returns:
             List of dicts with 'bbox' and 'embedding' (or InsightFace Face objects).
         """
-        if self.hailo_detector is not None:
-            # Hailo detection only → then CPU ArcFace embedding per crop
-            hailo_dets = self.hailo_detector.detect(image)
-            if not hailo_dets:
-                return []
-
-            # Get the ArcFace recognition model from InsightFace
-            rec_model = None
-            for model in self.app.models:
-                if hasattr(model, 'get_feat') or hasattr(model, 'get'):
-                    rec_model = model
-                    break
-
-            faces = []
-            for det in hailo_dets:
-                x1, y1, x2, y2 = det["bbox"]
-                x1, y1 = max(0, x1), max(0, y1)
-                x2, y2 = min(image.shape[1], x2), min(image.shape[0], y2)
-                if x2 <= x1 or y2 <= y1:
-                    continue
-
-                face_crop = image[y1:y2, x1:x2]
-
-                # Get embedding via InsightFace rec model on the crop
-                # Pad crop for better detection by the embedding model
-                pad = int(max(face_crop.shape[:2]) * 0.3)
-                padded = cv2.copyMakeBorder(
-                    face_crop, pad, pad, pad, pad,
-                    cv2.BORDER_CONSTANT, value=(0, 0, 0)
-                )
-                # Use InsightFace on the padded crop (detection + embedding)
-                # This is a small crop so CPU detection is fast
-                sub_faces = self.app.get(padded)
-                if sub_faces:
-                    faces.append(sub_faces[0])
-
-            return faces
-        else:
-            # CPU-only: InsightFace handles detection + embedding together
-            return self.app.get(image)
+        # Always use CPU InsightFace for detection + embedding
+        # Hailo SCRFD works well on full frames but fails on small face crops,
+        # and the crop→re-detect→embed pipeline adds complexity without benefit.
+        # CPU InsightFace SCRFD is fast enough for per-request face detection.
+        return self.app.get(image)
 
     def get_embedding(self, face_image: np.ndarray) -> Optional[np.ndarray]:
         """
