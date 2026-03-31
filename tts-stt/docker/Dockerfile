@@ -53,7 +53,8 @@ RUN --mount=type=bind,source=.,target=/ctx \
         rm -f /tmp/hailort*.deb && \
         pip install --break-system-packages "git+https://github.com/hailo-ai/hailo-apps.git#egg=hailo-apps[gen-ai]" && \
         pip install --break-system-packages "numpy<2" && \
-        echo "[HAILO] HailoRT + hailo-apps GenAI installed"; \
+        hailo-download-resources --group whisper_chat --arch hailo10h || true && \
+        echo "[HAILO] HailoRT + hailo-apps GenAI + Whisper model installed"; \
     else \
         echo "[HAILO] No hailort .deb found, STT CPU-only"; \
     fi
