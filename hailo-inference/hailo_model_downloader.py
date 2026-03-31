@@ -55,12 +55,12 @@ KNOWN_MODELS = {
             "hailo10h": f"{_S3_BASE}/hailo10h/arcface_r50.hef",
         },
     },
-    "whisper_small_encoder": {
-        "zoo_name": "whisper_small_encoder",
-        "filename": "whisper_small_encoder.hef",
-        "description": "Whisper Small encoder for speech recognition",
+    "whisper_base": {
+        "zoo_name": "whisper_base",
+        "filename": "whisper_base.hef",
+        "description": "Whisper Base encoder+decoder for speech recognition (124MB)",
         "s3_urls": {
-            "hailo10h": "https://dev-public.hailo.ai/v5.2.0/blob/Whisper-Small.hef",
+            "hailo10h": "https://dev-public.hailo.ai/v5.2.0/blob/Whisper-Base.hef",
         },
     },
 }
