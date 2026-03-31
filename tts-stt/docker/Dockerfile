@@ -1,12 +1,10 @@
-# Ubuntu 24.04 for TTS/STT services (CPU only, no CUDA/GPU)
+# Ubuntu 24.04 for TTS/STT services (CPU + Hailo-10H GenAI Whisper)
 FROM ubuntu:24.04
 WORKDIR /root/workspace
 
-# Set non-interactive frontend to avoid hanging
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt update
-RUN apt install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-dev \
     python-is-python3 \
@@ -15,17 +13,16 @@ RUN apt install -y --no-install-recommends \
     git \
     ffmpeg \
     software-properties-common \
+    portaudio19-dev \
+    libportaudio2 \
+    libasound2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git config --global --add safe.directory /root/workspace
 
-# Configure pip
-RUN mkdir -p /root/.pip && \
-    echo "[global]" > /root/.pip/pip.conf && \
-    echo "index-url = https://pypi.org/simple" >> /root/.pip/pip.conf
-
-# Install TTS-STT dependancies
+# Python dependencies
 RUN pip install --break-system-packages \
+    "numpy<2" \
     sherpa-onnx==1.12.19 \
     soundfile \
     sounddevice \
@@ -34,32 +31,29 @@ RUN pip install --break-system-packages \
     coloredlogs \
     humanfriendly \
     librosa \
-    requests
+    requests \
+    flask \
+    onnxruntime
 
-# install flask
-RUN pip install --break-system-packages flask --ignore-installed
+# Whisper backends (CPU fallback)
+RUN pip install --break-system-packages -U openai-whisper
+RUN pip install --break-system-packages faster-whisper
 
-# Install Whisper backends
-RUN pip install --break-system-packages -U openai-whisper  # fallback
-RUN pip install --break-system-packages faster-whisper      # default (CPU-optimized)
-
-# Sounddevice
-RUN add-apt-repository universe && apt update && apt install libportaudio2 libasound2-dev -y
-
-# Pin NumPy <2 for pickle compatibility with hailo-inference container
+# Pin NumPy <2 again (whisper may have upgraded it)
 RUN pip install --break-system-packages "numpy<2"
 
-# Install onnxruntime (CPU only)
-RUN pip install --break-system-packages onnxruntime
-
-# Hailo-10 HailoRT (optional — auto-detected: uses device[1] if 2+ Hailo present)
+# Hailo-10H: HailoRT system libs + Python bindings + hailo-apps GenAI
 RUN --mount=type=bind,source=.,target=/ctx \
     if ls /ctx/hailort*.deb 1>/dev/null 2>&1; then \
         cp /ctx/hailort*.deb /tmp/ && \
-        dpkg -i /tmp/hailort*.deb || apt-get install -f -y && \
-        pip install --break-system-packages hailort && \
+        dpkg --unpack /tmp/hailort*.deb && ldconfig && \
+        if ls /ctx/hailort*.whl 1>/dev/null 2>&1; then \
+            pip install --break-system-packages /ctx/hailort*.whl; \
+        fi && \
         rm -f /tmp/hailort*.deb && \
-        echo "[HAILO] HailoRT installed (STT uses device[1] if 2+ Hailo)"; \
+        pip install --break-system-packages "git+https://github.com/hailo-ai/hailo-apps.git#egg=hailo-apps[gen-ai]" && \
+        pip install --break-system-packages "numpy<2" && \
+        echo "[HAILO] HailoRT + hailo-apps GenAI installed"; \
     else \
         echo "[HAILO] No hailort .deb found, STT CPU-only"; \
     fi
