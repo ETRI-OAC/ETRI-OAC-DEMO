@@ -178,7 +178,7 @@ class FaceRecognitionNode(Node):
         if self.tts_log:
             lines.append("[음성 안내]")
             for msg in self.tts_log:
-                lines.append(f"  🔊 {msg}")
+                lines.append(f"  > {msg}")
         return "\n".join(lines)
 
     def _filter_bodies(self, bodies, max_dist=3.0):

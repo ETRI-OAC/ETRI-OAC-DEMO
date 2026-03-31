@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libegl1 \
     ffmpeg \
     libportaudio2 \
+    fonts-nanum \
     ros-jazzy-rmw-cyclonedds-cpp \
     ros-jazzy-nav2-msgs \
     ros-jazzy-tf2-ros \
