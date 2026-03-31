@@ -110,14 +110,29 @@ class FaceRecognizer:
             return faces[0].embedding
         return None
 
-    def register_face(self, name: str, face_image: np.ndarray) -> bool:
-        """Register a face to the known faces database."""
-        # Try full image detection first, then padded fallback
-        faces = self.app.get(face_image)
-        if faces:
-            embedding = faces[0].embedding
-        else:
-            embedding = self.get_embedding(face_image)
+    def register_face(self, name: str, face_image: np.ndarray,
+                      landmarks_5: Optional[np.ndarray] = None) -> bool:
+        """Register a face to the known faces database.
+
+        Args:
+            name: Name/ID of the person
+            face_image: Full image or cropped face image
+            landmarks_5: Optional 5x2 landmarks for alignment (same pipeline as recognize).
+                         If None, falls back to InsightFace detection.
+        """
+        embedding = None
+
+        # Preferred: use landmarks (same alignment as recognize → consistent embeddings)
+        if landmarks_5 is not None and self.rec_model is not None:
+            embedding = self.get_embedding_from_landmarks(face_image, landmarks_5)
+
+        # Fallback: InsightFace detection on full image
+        if embedding is None:
+            faces = self.app.get(face_image)
+            if faces:
+                embedding = faces[0].embedding
+            else:
+                embedding = self.get_embedding(face_image)
 
         if embedding is not None:
             self.known_faces[name] = embedding
@@ -128,7 +143,13 @@ class FaceRecognizer:
             return False
 
     def register_from_file(self, name: str, image_path: str) -> bool:
-        """Register a face from an image file."""
+        """Register a face from an image file.
+
+        Uses InsightFace to detect the face, then extracts 5-point landmarks
+        and computes the embedding via the same align_face pipeline used in
+        recognize(). This ensures registration and recognition embeddings
+        are computed identically.
+        """
         if not os.path.exists(image_path):
             print(f"[FaceRecognizer] File not found: {image_path}")
             return False
@@ -136,6 +157,37 @@ class FaceRecognizer:
         if image is None:
             print(f"[FaceRecognizer] Failed to read image: {image_path}")
             return False
+
+        # Detect face with InsightFace to get landmarks
+        faces = self.app.get(image)
+        if not faces:
+            # Retry with padding
+            h, w = image.shape[:2]
+            pad = int(max(h, w) * 0.3)
+            padded = cv2.copyMakeBorder(
+                image, pad, pad, pad, pad,
+                cv2.BORDER_CONSTANT, value=(0, 0, 0)
+            )
+            faces = self.app.get(padded)
+
+        if not faces:
+            print(f"[FaceRecognizer] Failed to register: {name} (no face detected)")
+            return False
+
+        face = faces[0]
+
+        # Use the same alignment pipeline as recognize()
+        if self.rec_model is not None and hasattr(face, 'kps') and face.kps is not None:
+            # InsightFace kps: 5x2 [left_eye, right_eye, nose, left_mouth, right_mouth]
+            landmarks_5 = face.kps.astype(np.float32)
+            # Use full image as "crop" with bbox [0, 0, w, h]
+            embedding = self.get_embedding_from_landmarks(image, landmarks_5)
+            if embedding is not None:
+                self.known_faces[name] = embedding
+                print(f"[FaceRecognizer] Registered: {name} (landmark-aligned)")
+                return True
+
+        # Fallback: use InsightFace's own embedding
         return self.register_face(name, image)
 
     @staticmethod
