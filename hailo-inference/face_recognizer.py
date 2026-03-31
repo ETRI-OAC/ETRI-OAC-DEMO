@@ -95,7 +95,7 @@ class FaceRecognizer:
             rgb = cv2.cvtColor(aligned_112, cv2.COLOR_BGR2RGB)
             tensor = np.expand_dims(rgb, axis=0).astype(np.uint8)  # (1, 112, 112, 3)
 
-            outputs = self.hailo_client.infer("arcface_mobilefacenet", tensor)
+            outputs = self.hailo_client.infer("arcface_r50", tensor)
 
             # Get the first (and only) output — 512-dim embedding
             embedding = list(outputs.values())[0].flatten().astype(np.float32)

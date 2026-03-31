@@ -38,9 +38,17 @@ KNOWN_MODELS = {
     "arcface_mobilefacenet": {
         "zoo_name": "arcface_mobilefacenet",
         "filename": "arcface_mobilefacenet.hef",
-        "description": "ArcFace MobileFaceNet face embedding (112x112 → 512-dim)",
+        "description": "ArcFace MobileFaceNet face embedding (112x112 → 512-dim, lightweight)",
         "s3_urls": {
             "hailo10h": f"{_S3_BASE}/hailo10h/arcface_mobilefacenet.hef",
+        },
+    },
+    "arcface_r50": {
+        "zoo_name": "arcface_r50",
+        "filename": "arcface_r50.hef",
+        "description": "ArcFace ResNet-50 face embedding (112x112 → 512-dim, high accuracy)",
+        "s3_urls": {
+            "hailo10h": f"{_S3_BASE}/hailo10h/arcface_r50.hef",
         },
     },
 }
