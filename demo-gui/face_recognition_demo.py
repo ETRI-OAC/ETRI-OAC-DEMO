@@ -20,7 +20,7 @@ from clients.tts_client import TTSClient
 from clients.body_tracking_visualizer import visualize_bodies_2d
 
 sys.path.append(os.path.join(PROJECT_ROOT, 'hailo-inference'))
-from face_recognizer import coco17_to_arcface_landmarks
+from face_landmarks import coco17_to_arcface_landmarks
 from utils.pid import PIDControllerClass
 
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel

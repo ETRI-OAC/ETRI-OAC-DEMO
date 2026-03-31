@@ -18,7 +18,7 @@ from _20_vlm_gui import VLLMClient, VLLMThread
 from clients.body_tracking_visualizer import visualize_bodies_2d
 from utils.pid import PIDControllerClass
 sys.path.append(os.path.join(PROJECT_ROOT, 'hailo-inference'))
-from face_recognizer import coco17_to_arcface_landmarks
+from face_landmarks import coco17_to_arcface_landmarks
 
 # GUI
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox

@@ -17,7 +17,7 @@ from openpath_CANINE_middleware.python_scripts.pantiltManager import pantiltMana
 from utils.pid import PIDControllerClass
 from utils.transformations import rotation_matrix_to_quaternion
 sys.path.append(os.path.join(PROJECT_ROOT, 'hailo-inference'))
-from face_recognizer import coco17_to_arcface_landmarks
+from face_landmarks import coco17_to_arcface_landmarks
 
 import rclpy
 from rclpy.node import Node

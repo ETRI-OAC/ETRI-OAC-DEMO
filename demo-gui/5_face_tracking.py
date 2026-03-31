@@ -16,7 +16,7 @@ from clients.body_tracking_visualizer import visualize_bodies_2d
 from openpath_CANINE_middleware.python_scripts.pantiltManager import pantiltManager
 from utils.pid import PIDControllerClass
 sys.path.append(os.path.join(PROJECT_ROOT, 'hailo-inference'))
-from face_recognizer import coco17_to_arcface_landmarks
+from face_landmarks import coco17_to_arcface_landmarks
 
 class faceTracking:
     def __init__(self):

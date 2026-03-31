@@ -16,7 +16,7 @@ from clients.face_recognition_client import FaceRecognitionClient
 from clients.body_tracking_visualizer import visualize_bodies_2d
 from utils.pid import PIDControllerClass
 sys.path.append(os.path.join(PROJECT_ROOT, 'hailo-inference'))
-from face_recognizer import coco17_to_arcface_landmarks
+from face_landmarks import coco17_to_arcface_landmarks
 
 import rclpy
 from rclpy.node import Node
