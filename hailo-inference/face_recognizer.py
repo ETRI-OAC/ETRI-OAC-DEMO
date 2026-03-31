@@ -60,7 +60,11 @@ class FaceRecognizer:
         self.app.prepare(ctx_id=ctx_id, det_size=(640, 640))
 
         # Use Hailo-10 for face detection if available
-        if use_hailo_server:
+        if hailo_hef_path == "__skip__":
+            # Explicitly skip Hailo — CPU-only mode
+            self.hailo_detector = None
+            hailo_hef_path = None
+        elif use_hailo_server:
             # Use centralized inference server (shares Hailo device)
             try:
                 from hailo_face_detector import HailoFaceDetector

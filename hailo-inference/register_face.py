@@ -54,6 +54,8 @@ def main():
                        help='Path to the database file')
     parser.add_argument('--threshold', type=float, default=0.5,
                        help='Similarity threshold')
+    parser.add_argument('--no-hailo', action='store_true',
+                       help='Skip Hailo, use CPU InsightFace for face detection')
     parser.add_argument('--use-hailo-server', action='store_true',
                        help='Use centralized hailo_inference_server for face detection')
     parser.add_argument('--hailo-server-host', type=str, default='localhost',
@@ -78,12 +80,19 @@ def main():
     
     # Initialize recognizer
     print("\nInitializing Face Recognizer (ArcFace)...")
-    recognizer = FaceRecognizer(
-        similarity_threshold=args.threshold,
-        use_hailo_server=args.use_hailo_server,
-        hailo_server_host=args.hailo_server_host,
-        hailo_server_port=args.hailo_server_port,
-    )
+    if args.no_hailo:
+        # CPU-only: skip Hailo entirely, use InsightFace SCRFD on CPU
+        recognizer = FaceRecognizer(
+            similarity_threshold=args.threshold,
+            hailo_hef_path="__skip__",  # force no Hailo
+        )
+    else:
+        recognizer = FaceRecognizer(
+            similarity_threshold=args.threshold,
+            use_hailo_server=args.use_hailo_server,
+            hailo_server_host=args.hailo_server_host,
+            hailo_server_port=args.hailo_server_port,
+        )
     
     # # Load existing database if exists
     # if os.path.exists(args.database):
