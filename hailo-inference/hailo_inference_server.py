@@ -93,9 +93,16 @@ class HailoInferenceServer:
             # Multi group — use HEF + VDevice.configure API
             self._load_multi_group(name, hef_path, hef, group_names)
 
-    def _load_single_group(self, name: str, hef_path: str) -> None:
-        """Load single-network-group HEF via InferModel API."""
-        infer_model = self._vdevice.create_infer_model(hef_path)
+    def _load_single_group(self, name: str, hef_path: str, network_name: str = "") -> None:
+        """Load a network group via InferModel API.
+
+        Args:
+            name: Key to register in self._models
+            hef_path: Path to HEF file
+            network_name: Specific network group name (for multi-group HEFs).
+                          Empty string = auto (single-group HEFs).
+        """
+        infer_model = self._vdevice.create_infer_model(hef_path, network_name)
         infer_model.set_batch_size(1)
 
         for out in infer_model.outputs:
@@ -118,17 +125,16 @@ class HailoInferenceServer:
         }
 
     def _load_multi_group(self, name: str, hef_path: str, hef, group_names: list) -> None:
-        """Load multi-network-group HEF via VDevice.configure API."""
+        """Load multi-network-group HEF by creating separate InferModels per group.
+
+        Uses create_infer_model(hef_path, name=group_name) to load each
+        network group individually via the InferModel API.
+        """
         print(f"[HAILO-SERVER] Loading multi-group HEF: {name} ({hef_path})")
         print(f"  Network groups: {group_names}")
 
-        network_groups = self._vdevice.configure(hef)
-
-        for ng, gname in zip(network_groups, group_names):
-            # Derive a short alias from the group name
-            # e.g. "whisper_base_10s_encoder" → "encoder"
-            parts = gname.split("_")
-            # Try to find "encoder" or "decoder" in the name
+        for gname in group_names:
+            # Derive short alias: "whisper_base_10s_encoder" → "encoder"
             short = gname
             for keyword in ["encoder", "decoder"]:
                 if keyword in gname:
@@ -137,23 +143,10 @@ class HailoInferenceServer:
 
             model_key = f"{name}/{short}"
 
-            input_infos = hef.get_input_vstream_infos(gname)
-            output_infos = hef.get_output_vstream_infos(gname)
-
-            print(f"  [{model_key}] (group: {gname})")
-            for info in input_infos:
-                print(f"    input: {info.name} shape={info.shape}")
-            for info in output_infos:
-                print(f"    output: {info.name} shape={info.shape}")
-
-            self._models[model_key] = {
-                "type": "network_group",
-                "network_group": ng,
-                "group_name": gname,
-                "hef": hef,
-                "input_infos": input_infos,
-                "output_infos": output_infos,
-            }
+            try:
+                self._load_single_group(model_key, hef_path, network_name=gname)
+            except Exception as e:
+                print(f"  [{model_key}] FAILED: {e}")
 
     # ------------------------------------------------------------------
     # Inference
@@ -163,7 +156,7 @@ class HailoInferenceServer:
         """Run inference on a loaded model. Thread-safe.
 
         Args:
-            model_name: "yolov8m_pose" (single group) or "whisper_base/encoder" (multi group)
+            model_name: "yolov8m_pose" or "whisper_base/encoder"
             input_tensor: Single input tensor (for single-input models)
             input_tensors: Dict of {input_name: tensor} (for multi-input models)
         """
@@ -171,22 +164,26 @@ class HailoInferenceServer:
             raise ValueError(f"Model not loaded: {model_name}")
 
         entry = self._models[model_name]
+        return self._infer_single(entry, input_tensor, input_tensors)
 
-        if entry["type"] == "infer_model":
-            return self._infer_single(entry, input_tensor)
-        else:
-            return self._infer_network_group(entry, input_tensor, input_tensors)
-
-    def _infer_single(self, entry: dict, input_tensor: np.ndarray) -> Dict[str, np.ndarray]:
-        """Inference via InferModel API (single network group)."""
+    def _infer_single(self, entry: dict, input_tensor: Optional[np.ndarray],
+                       input_tensors: Optional[Dict[str, np.ndarray]] = None) -> Dict[str, np.ndarray]:
+        """Inference via InferModel API. Supports single and multi-input models."""
         infer_model = entry["infer_model"]
         configured = entry["configured"]
 
         with self._lock:
             bindings = configured.create_bindings()
-            input_name = infer_model.inputs[0].name
-            bindings.input(input_name).set_buffer(input_tensor)
 
+            # Set input(s)
+            if input_tensors is not None:
+                for inp_name, tensor in input_tensors.items():
+                    bindings.input(inp_name).set_buffer(tensor)
+            elif input_tensor is not None:
+                input_name = infer_model.inputs[0].name
+                bindings.input(input_name).set_buffer(input_tensor)
+
+            # Allocate outputs
             out_bufs: Dict[str, np.ndarray] = {}
             for out in infer_model.outputs:
                 buf = np.empty(tuple(out.shape), dtype=np.float32)
@@ -195,36 +192,7 @@ class HailoInferenceServer:
 
             configured.run([bindings], 10000)
 
-        return {name: bindings.output(name).get_buffer() for name in out_bufs}
-
-    def _infer_network_group(self, entry: dict, input_tensor: Optional[np.ndarray],
-                              input_tensors: Optional[Dict[str, np.ndarray]]) -> Dict[str, np.ndarray]:
-        """Inference via ConfiguredNetworkGroup API (multi network group)."""
-        from hailo_platform import InputVStreamParams, OutputVStreamParams
-
-        ng = entry["network_group"]
-        input_infos = entry["input_infos"]
-        output_infos = entry["output_infos"]
-
-        # Build input dict
-        if input_tensors is not None:
-            inputs = input_tensors
-        elif input_tensor is not None and len(input_infos) == 1:
-            inputs = {input_infos[0].name: input_tensor}
-        else:
-            raise ValueError(f"Model has {len(input_infos)} inputs, provide 'tensors' dict")
-
-        with self._lock:
-            in_params = InputVStreamParams.make(ng, quantized=False,
-                                                 format_type=self._FormatType.FLOAT32)
-            out_params = OutputVStreamParams.make(ng, quantized=False,
-                                                   format_type=self._FormatType.FLOAT32)
-
-            from hailo_platform import InferVStreams
-            with InferVStreams(ng, in_params, out_params) as pipeline:
-                results = pipeline.infer(inputs)
-
-        return results
+        return {n: bindings.output(n).get_buffer() for n in out_bufs}
 
     # ------------------------------------------------------------------
     # TCP server
@@ -308,11 +276,10 @@ class HailoInferenceServer:
 
     def _cleanup(self) -> None:
         for name, entry in self._models.items():
-            if entry["type"] == "infer_model":
-                try:
-                    entry["ctx"].__exit__(None, None, None)
-                except Exception:
-                    pass
+            try:
+                entry["ctx"].__exit__(None, None, None)
+            except Exception:
+                pass
         self._models.clear()
         print("[HAILO-SERVER] Cleaned up.")
 
