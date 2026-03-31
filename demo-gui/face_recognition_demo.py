@@ -114,9 +114,14 @@ class FaceRecognitionNode(Node):
                             try:
                                 result, _ = self.face_client.recognize(face_img, measure_time=False)
                                 name, sim = result['name'], result['similarity']
+                                connected = True
                             except Exception:
                                 name, sim = "서버 연결 중...", 0.0
+                                connected = False
                             self._draw_face_result(disp, bbox, body['id'], name, sim, "looking")
+                            if not connected:
+                                self.status_text = "Face Recognition 서버 연결 대기 중..."
+                                continue
                             self.not_looking_cnt = 0
                             self.face_recognition_cnt += 1
                             if name != "Unknown":
