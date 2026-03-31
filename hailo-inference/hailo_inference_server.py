@@ -59,15 +59,16 @@ class HailoInferenceServer:
         self._HEF = HEF
         self._FormatType = FormatType
 
+        params = VDevice.create_params()
+        params.group_id = "shared_vdevice"
         device_id = detect_hailo_device(device_index=device_index)
         if device_id:
-            params = VDevice.create_params()
             params.device_ids = [device_id]
-            self._vdevice = VDevice(params)
             print(f"[HAILO-SERVER] Using device: {device_id}")
         else:
-            self._vdevice = VDevice()
             print("[HAILO-SERVER] Using default device")
+        self._vdevice = VDevice(params)
+        print(f"[HAILO-SERVER] VDevice group: shared_vdevice")
 
     # ------------------------------------------------------------------
     # Model management
@@ -292,7 +293,7 @@ def main():
     parser.add_argument("--device-index", type=int, default=0,
                         help="Hailo device index (default: 0)")
     parser.add_argument("--models", type=str, nargs="*",
-                        default=["yolov8m_pose", "scrfd_10g", "arcface_r50", "whisper_small"],
+                        default=["yolov8m_pose", "scrfd_10g", "arcface_r50"],
                         help="Models to load (default: yolov8m_pose scrfd_10g arcface_r50 whisper_base)")
     args = parser.parse_args()
 
