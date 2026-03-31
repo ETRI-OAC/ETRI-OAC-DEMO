@@ -106,14 +106,25 @@ def recognize_face():
                 "error": f"Image decoding error: {str(e)}"
             }), 400
         
+        # Parse optional landmarks (from YOLO keypoints)
+        landmarks = data.get('landmarks', None)
+        landmarks_5 = None
+        if landmarks is not None:
+            try:
+                landmarks_5 = np.array(landmarks, dtype=np.float32)
+                if landmarks_5.shape != (5, 2):
+                    landmarks_5 = None
+            except Exception:
+                landmarks_5 = None
+
         # Perform face recognition
         if recognizer is None:
             return jsonify({
                 "success": False,
                 "error": "Face recognizer not initialized"
             }), 500
-        
-        name, similarity = recognizer.recognize(face_image)
+
+        name, similarity = recognizer.recognize(face_image, landmarks_5=landmarks_5)
 
         if name != "Unknown":
             print(f"[RECOGNIZE] {name} (similarity: {similarity:.3f}) | known: {list(recognizer.known_faces.keys())}")

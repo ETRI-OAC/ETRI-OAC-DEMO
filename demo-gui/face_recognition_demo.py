@@ -18,6 +18,9 @@ from clients.zed_client import ZedClient
 from clients.face_recognition_client import FaceRecognitionClient
 from clients.tts_client import TTSClient
 from clients.body_tracking_visualizer import visualize_bodies_2d
+
+sys.path.append(os.path.join(PROJECT_ROOT, 'hailo-inference'))
+from face_recognizer import coco17_to_arcface_landmarks
 from utils.pid import PIDControllerClass
 
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel
@@ -111,8 +114,15 @@ class FaceRecognitionNode(Node):
                     if face_img is not None:
                         looking = self._is_looking(body)
                         if looking:
+                            # Extract YOLO keypoints as ArcFace landmarks
+                            lmks = coco17_to_arcface_landmarks(
+                                body['keypoints_2d'], bbox.tolist()
+                            )
+                            lmks_list = lmks.tolist() if lmks is not None else None
                             try:
-                                result, _ = self.face_client.recognize(face_img, measure_time=False)
+                                result, _ = self.face_client.recognize(
+                                    face_img, landmarks=lmks_list, measure_time=False
+                                )
                                 name, sim = result['name'], result['similarity']
                                 connected = True
                             except Exception:

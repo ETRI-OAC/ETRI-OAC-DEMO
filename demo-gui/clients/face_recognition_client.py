@@ -79,15 +79,19 @@ class FaceRecognitionClient:
     def recognize(
         self,
         image: Union[str, np.ndarray],
+        landmarks: Optional[list] = None,
         measure_time: bool = False
     ) -> Tuple[Dict[str, Any], Optional[float]]:
         """
         Send image to face recognition server and receive recognition result.
-        
+
         Args:
             image: Image file path (str) or image as numpy array (BGR, uint8)
+            landmarks: Optional 5-point face landmarks [[x,y], ...] in crop coordinates.
+                       Order: [left_eye, right_eye, nose, left_mouth, right_mouth].
+                       If provided, server skips SCRFD re-detection and aligns directly.
             measure_time: Whether to measure response time
-        
+
         Returns:
             (API response dictionary, response time (seconds) or None) tuple
         """
@@ -96,11 +100,13 @@ class FaceRecognitionClient:
             base64_image = self.encode_image_from_array(image)
         else:
             base64_image = self.encode_image_from_path(image)
-        
+
         # Construct request payload
         payload = {
             "image": base64_image
         }
+        if landmarks is not None:
+            payload["landmarks"] = landmarks
         
         # Send API request
         start_time = time.time() if measure_time else None

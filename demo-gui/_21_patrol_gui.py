@@ -17,6 +17,8 @@ from clients.face_recognition_client import FaceRecognitionClient
 from _20_vlm_gui import VLLMClient, VLLMThread
 from clients.body_tracking_visualizer import visualize_bodies_2d
 from utils.pid import PIDControllerClass
+sys.path.append(os.path.join(PROJECT_ROOT, 'hailo-inference'))
+from face_recognizer import coco17_to_arcface_landmarks
 
 # GUI
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox
@@ -178,7 +180,9 @@ class faceIdentificationWithNav(Node):
                     # Check if the person is looking at the camera
                     is_looking_at_cam = self.is_person_looking_at_cam(body)
                     if is_looking_at_cam:
-                        result,_ = self.face_recognition_client.recognize(face_image, measure_time=False)
+                        lmks = coco17_to_arcface_landmarks(body['keypoints_2d'], bbox.tolist())
+                        lmks_list = lmks.tolist() if lmks is not None else None
+                        result,_ = self.face_recognition_client.recognize(face_image, landmarks=lmks_list, measure_time=False)
                         self.overlay_face_recognition_result(self.image_display, bbox, body['id'], result['name'], result['similarity'], "looking")
                         self.not_looking_cnt = 0 # reset not looking counter
                         self.face_recognition_cnt += 1

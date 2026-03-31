@@ -15,6 +15,8 @@ from clients.vlm_client import VLLMClient
 from clients.body_tracking_visualizer import visualize_bodies_2d
 from openpath_CANINE_middleware.python_scripts.pantiltManager import pantiltManager
 from utils.pid import PIDControllerClass
+sys.path.append(os.path.join(PROJECT_ROOT, 'hailo-inference'))
+from face_recognizer import coco17_to_arcface_landmarks
 
 class faceTracking:
     def __init__(self):
@@ -138,7 +140,9 @@ def main():
             if bodies is not None and len(bodies) > 0: # if face detected
                 face_image, bbox = face_tracking.crop_face(image, bodies)
                 if face_image is not None: # if face is in the image (not out of bounds)
-                    result,_ = face_tracking.face_recognition_client.recognize(face_image, measure_time=False)
+                    lmks = coco17_to_arcface_landmarks(bodies[0]['keypoints_2d'], bbox.tolist())
+                    lmks_list = lmks.tolist() if lmks is not None else None
+                    result,_ = face_tracking.face_recognition_client.recognize(face_image, landmarks=lmks_list, measure_time=False)
                     image = face_tracking.overlay_bodies_on_image(image, bodies)
                     image = face_tracking.overlay_face_recognition_result(image, bbox, result)
                 face_tracking.move_pantilt(bodies)

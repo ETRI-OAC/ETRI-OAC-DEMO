@@ -16,6 +16,8 @@ from clients.body_tracking_visualizer import visualize_bodies_2d
 from openpath_CANINE_middleware.python_scripts.pantiltManager import pantiltManager
 from utils.pid import PIDControllerClass
 from utils.transformations import rotation_matrix_to_quaternion
+sys.path.append(os.path.join(PROJECT_ROOT, 'hailo-inference'))
+from face_recognizer import coco17_to_arcface_landmarks
 
 import rclpy
 from rclpy.node import Node
@@ -219,7 +221,9 @@ class faceTracking(Node):
                 self.publish_face_pose(body)
                 face_image, bbox = self.crop_face(image, body)
                 if face_image is not None: # if face is in the image (not out of bounds)
-                    result,_ = self.face_recognition_client.recognize(face_image, measure_time=False)
+                    lmks = coco17_to_arcface_landmarks(body['keypoints_2d'], bbox.tolist())
+                    lmks_list = lmks.tolist() if lmks is not None else None
+                    result,_ = self.face_recognition_client.recognize(face_image, landmarks=lmks_list, measure_time=False)
                     is_looking_at_cam = self.is_person_looking_at_cam(body)
                     image_display = self.overlay_face_recognition_result(image_display, bbox, body['id'], result['name'], result['similarity'], "looking" if is_looking_at_cam else "not looking")
                 self.move_pantilt(body)
