@@ -116,9 +116,9 @@ def recognize_face():
         name, similarity = recognizer.recognize(face_image)
 
         if name != "Unknown":
-            print(f"[RECOGNIZE] {name} (similarity: {similarity:.3f})")
+            print(f"[RECOGNIZE] {name} (similarity: {similarity:.3f}) | known: {list(recognizer.known_faces.keys())}")
         else:
-            print(f"[RECOGNIZE] Unknown (best: {similarity:.3f})")
+            print(f"[RECOGNIZE] Unknown (best: {similarity:.3f}) | known: {list(recognizer.known_faces.keys())}")
 
         return jsonify({
             "success": True,
