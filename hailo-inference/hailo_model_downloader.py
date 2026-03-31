@@ -63,6 +63,14 @@ KNOWN_MODELS = {
             "hailo10h": "https://dev-public.hailo.ai/v5.2.0/blob/Whisper-Base.hef",
         },
     },
+    "whisper_small": {
+        "zoo_name": "whisper_small",
+        "filename": "whisper_small.hef",
+        "description": "Whisper Small encoder+decoder for speech recognition (388MB)",
+        "s3_urls": {
+            "hailo10h": "https://dev-public.hailo.ai/v5.2.0/blob/Whisper-Small.hef",
+        },
+    },
 }
 
 
