@@ -1,7 +1,7 @@
 # TTS-STT Container
 
-음성 합성(TTS)과 음성 인식(STT) 서버를 **한 개의 Docker 컨테이너**에서 구동합니다.  
-컨테이너 이름: `base-tts-stt-1`.  
+음성 합성(TTS)과 음성 인식(STT) 서버를 **한 개의 Docker 컨테이너**에서 구동합니다.
+컨테이너 이름: `base-tts-stt-1`.
 같은 컨테이너 안에서 **TTS 서버**와 **STT 서버**는 각각 별도 프로세스로 실행됩니다.
 
 ---
@@ -71,5 +71,10 @@ base-tts-stt-1 (컨테이너)
 └── tts_server.py  (포트 8002)  ← Sherpa-ONNX 기반 TTS REST API
 ```
 
-데모 클라이언트(`tts_client.py`, `stt_client.py`)는 `localhost:8002`, `localhost:8001`로 각각 접속합니다.  
-`run_all_servers.sh`에서는 STT·TTS가 각각 별도 tmux 패널에서 실행됩니다.
+## 클라이언트 연동
+
+데모 클라이언트는 `demo-gui/clients/` 에 있습니다:
+- `tts_client.py` → `localhost:8002`
+- `stt_client.py` → `localhost:8001`
+
+`run_all_servers.sh`에서는 STT·TTS가 각각 별도 탭에서 실행됩니다.

@@ -2,120 +2,106 @@
 
 ## Project Overview
 
-This project is a demonstration of a sophisticated robotics system integrated into a 4-legged robot. It combines computer vision, artificial intelligence, and voice interaction to perform a variety of tasks, including person tracking, face recognition, scene understanding, and autonomous navigation. The system is built on a foundation of ROS2 and Docker, with various AI models running on specialized hardware like the Hailo-10 AI accelerator and the AMD Ryzen AI NPU.
+This project is a demonstration of a robotics system integrated into a 4-legged robot. It combines computer vision, artificial intelligence, and voice interaction to perform person tracking, face recognition, scene understanding, and autonomous navigation. The system is built on ROS 2 Jazzy and Docker, with AI models running on specialized hardware (Hailo-10 AI accelerator, AMD Ryzen AI NPU).
 
 ### Key Technologies
 
-*   **Robotics:** ROS2, CANINE 4-legged robot
-*   **AI Hardware:** Hailo-10, AMD Ryzen AI NPU
-*   **Vision:** OAK-D Pro W Camera, RPLidar
+*   **Robotics:** ROS 2 Jazzy Jalisco, CANINE 4-legged robot
+*   **AI Hardware:** Hailo-10 (M.2), AMD Ryzen AI 350 NPU
+*   **Vision:** OAK-D Pro W Camera (DepthAI), RPLidar
 *   **AI Models:**
-    *   YOLOv8s-pose for pose estimation
-    *   SCRFD for face detection
-    *   InsightFace for face embedding
-    *   Gemma-3-4b-it-mm for vision-language tasks
-    *   Whisper for speech-to-text
-    *   Sherpa-ONNX VITS for text-to-speech
-*   **Containerization:** Docker
+    *   YOLOv8m-pose for pose estimation (Hailo-10)
+    *   SCRFD-10g for face detection (Hailo-10)
+    *   InsightFace ArcFace for face embedding (CPU)
+    *   Gemma-3-4b-it-mm for vision-language tasks (NPU, currently disabled)
+    *   Whisper for speech-to-text (CPU)
+    *   Sherpa-ONNX VITS for text-to-speech (CPU)
+*   **Containerization:** Docker (6 containers)
 
 ### Architecture
 
-The system is architected as a set of microservices running in Docker containers:
+The system is architected as microservices running in Docker containers:
 
-*   **OAK-ROS2 Container:** Manages the OAK-D camera, robot control (via CANINE middleware), LiDAR, Pan-Tilt servos, and Nav2 for navigation.
-*   **VLM Container:** Runs the Gemma-3-4b-it-mm vision-language model on the Ryzen AI NPU for scene understanding.
-*   **TTS-STT Container:** Handles Korean speech-to-text (Whisper) and text-to-speech (Sherpa-ONNX).
-*   **Face Recognition Container:** Performs face detection and recognition using InsightFace.
+*   **OAK-Camera Container** (`oak-camera/`): OAK-D Pro W camera via DepthAI, writes frames + body tracking to `/dev/shm`.
+*   **Demo GUI Container** (`demo-gui/`): PyQt5 GUI demos, CANINE middleware, Nav2 SLAM config, pan-tilt servo control.
+*   **Hailo Inference Container** (`hailo-inference/`): Multi-context Hailo-10 inference server (pose + face detection), face recognition (ArcFace).
+*   **Nav2 Container** (`nav2/`): Nav2, AMCL, RPLidar for autonomous navigation.
+*   **VLM Container** (`vlm/`): Gemma-3-4b-it-mm on Ryzen AI NPU (currently disabled).
+*   **TTS-STT Container** (`tts-stt/`): Korean TTS (Sherpa-ONNX) + STT (Whisper).
 
 ## Building and Running
 
 ### Initial Setup
 
-Before running the project, you need to install Docker, Python, Git LFS, and set up the necessary hardware (OAK-D camera, Hailo-10). The `README.md` provides detailed instructions for this one-time setup.
+Before running the project, install Docker, Python, Git LFS, and set up the necessary hardware (OAK-D camera, Hailo-10). The `README.md` provides detailed instructions.
 
 ### Building the Docker Images
 
-Build the four Docker containers. This only needs to be done once.
+Build all 6 containers at once:
 
 ```bash
-# OAK-ROS2 Container
-cd zed-ros2-workspace/docker
-./build.sh
-cd ../..
+./build_all_docker.sh
+```
 
-# VLM Container
-cd vlm/docker
-./compose_up.sh
-# Press Ctrl+C to stop after the build is complete
-cd ../..
+Or individually:
 
-# TTS-STT Container
-cd tts-stt/docker
-./compose_up.sh
-# Press Ctrl+C to stop after the build is complete
-cd ../..
-
-# Face Recognition Container
-cd face-recognition/docker
-./compose_up.sh
-# Press Ctrl+C to stop after the build is complete
-cd ../..
+```bash
+cd oak-camera/docker && ./build.sh && cd ../..
+cd hailo-inference/docker && ./build.sh && cd ../..
+cd nav2/docker && ./build.sh && cd ../..
+cd demo-gui/docker && ./build.sh && cd ../..
+cd tts-stt/docker && ./compose_up.sh && cd ../..   # Ctrl+C after build
+cd vlm/docker && ./compose_up.sh && cd ../..       # Ctrl+C after build (optional)
 ```
 
 ### Running the Servers
 
-You can run all the servers at once using a script:
+Run all servers at once:
 
 ```bash
 ./run_all_servers.sh
 ```
 
-This will start all the necessary services in a `tmux` session.
+This opens a gnome-terminal window with 8 tabs for all services.
 
 ### Running the Demos
 
-There are several demos available, each with its own GUI. The servers must be running before starting a demo.
+Servers must be running before starting a demo.
 
-*   **Person Tracking (Outdoor):**
+*   **Face Recognition (standalone, no map needed):**
+    ```bash
+    ./face_demo.sh
+    ```
+
+*   **Patrol + Face Recognition (indoor, map needed):**
+    ```bash
+    # Prerequisite: run_all_servers.sh running, robot in Walk mode
+    ./patrol.sh
+    ```
+
+*   **Person Tracking (outdoor, no map needed):**
     ```bash
     # Terminal A: Start Nav2
-    cd zed-ros2-workspace
-    ./run_nav2_outdoor.sh
+    cd oak-camera && ./run_nav2_outdoor.sh
 
     # Terminal B: Start the demo GUI
-    cd zed-ros2-workspace/docker && ./exec.sh
-    cd /root/workspace/zed-ros2-workspace/test_scripts
-    python _22_usertracking_gui.py
+    cd demo-gui/docker && ./exec.sh
+    cd /root/workspace/demo-gui
+    python3 _22_usertracking_gui.py
     ```
 
-*   **Patrol + Face Recognition (Indoor):**
+*   **VLM Scene Description (currently disabled):**
     ```bash
-    # Terminal A: Start Nav2 with an indoor map
-    cd zed-ros2-workspace
-    ./run_nav2_indoor.sh
-
-    # Terminal B: Initialize robot position
-    cd zed-ros2-workspace/docker && ./exec.sh
-    cd /root/workspace/zed-ros2-workspace/SLAM_Nav
-    python keyboard_teleop.py
-
-    # Terminal C: Start the demo GUI
-    cd zed-ros2-workspace/docker && ./exec.sh
-    cd /root/workspace/zed-ros2-workspace/test_scripts
-    python _21_patrol_gui.py
-    ```
-
-*   **VLM Scene Description:**
-    ```bash
-    cd zed-ros2-workspace/docker && ./exec.sh
-    cd /root/workspace/zed-ros2-workspace/test_scripts
-    python _20_vlm_gui.py
+    cd demo-gui/docker && ./exec.sh
+    cd /root/workspace/demo-gui
+    python3 _20_vlm_gui.py
     ```
 
 ## Development Conventions
 
-*   **Containerization:** The entire system is containerized with Docker, promoting modularity and reproducibility. Each major component runs in its own container.
-*   **Microservices:** The architecture follows a microservices pattern, with services communicating over the network (e.g., REST APIs).
-*   **ROS2:** ROS2 is used for communication between the different hardware components and software modules, particularly within the `OAK-ROS2` container.
-*   **AI Model Management:** AI models are either downloaded automatically on the first run or managed with Git LFS.
-*   **Hardware Acceleration:** The system is designed to take advantage of specialized hardware for AI inference, such as the Hailo-10 and Ryzen AI NPU.
+*   **Containerization:** 6 Docker containers, each with `docker/` subdirectory containing Dockerfile, compose file, and shell scripts.
+*   **Microservices:** Services communicate over host network via REST APIs (VLM:8000, STT:8001, TTS:8002, Hailo:8003, Face:7999) and ROS 2 topics.
+*   **Shared Memory IPC:** Camera frames and body tracking data shared via `/dev/shm` (`zed_image_shm`, `zed_body_shm`).
+*   **ROS 2 Jazzy:** Used for robot control (`canine_states`/`canine_command`), navigation (`cmd_vel`, `scan`), and pan-tilt servo control.
+*   **AI Model Management:** Hailo HEF models auto-download on first run. Korean TTS model stored via Git LFS.
+*   **Hardware Acceleration:** Hailo-10 for pose/face detection, Ryzen AI NPU for VLM, CPU for embedding/TTS/STT.
