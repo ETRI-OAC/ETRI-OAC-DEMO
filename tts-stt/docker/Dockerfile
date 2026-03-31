@@ -46,6 +46,9 @@ RUN pip install --break-system-packages faster-whisper      # default (CPU-optim
 # Sounddevice
 RUN add-apt-repository universe && apt update && apt install libportaudio2 libasound2-dev -y
 
+# Pin NumPy <2 for pickle compatibility with hailo-inference container
+RUN pip install --break-system-packages "numpy<2"
+
 # Install onnxruntime (CPU only)
 RUN pip install --break-system-packages onnxruntime
 
