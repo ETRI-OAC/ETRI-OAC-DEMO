@@ -196,7 +196,13 @@ class FaceRecognizer:
         Returns:
             True if registration successful
         """
-        embedding = self.get_embedding(face_image)
+        # Try detecting on the full image first (works best for full photos)
+        faces = self._detect_faces(face_image)
+        if faces:
+            embedding = faces[0].embedding
+        else:
+            # Fallback: pad and retry (for tightly cropped face images)
+            embedding = self.get_embedding(face_image)
 
         if embedding is not None:
             self.known_faces[name] = embedding
