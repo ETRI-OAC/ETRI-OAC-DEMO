@@ -53,25 +53,27 @@ class HailoInferenceClient:
             remaining -= len(chunk)
         return b"".join(chunks)
 
-    def infer(self, model_name: str, tensor: np.ndarray,
+    def infer(self, model_name: str, tensor: Optional[np.ndarray] = None,
+              tensors: Optional[Dict[str, np.ndarray]] = None,
               _retried: bool = False) -> Dict[str, np.ndarray]:
         """Send inference request and return output tensors.
 
         Args:
-            model_name: Name of the loaded model (e.g. "yolov8m_pose")
-            tensor: Input tensor (NHWC uint8 or float32, matching model input)
+            model_name: Model name (e.g. "yolov8m_pose", "whisper_base/encoder")
+            tensor: Single input tensor (for single-input models)
+            tensors: Dict of {input_name: tensor} (for multi-input models)
 
         Returns:
             Dict mapping output tensor names to numpy arrays.
-
-        Raises:
-            RuntimeError: If server returns an error.
-            ConnectionError: If unable to connect after retry.
         """
         if self._sock is None:
             self._connect()
 
-        request = {"model": model_name, "tensor": tensor}
+        request = {"model": model_name}
+        if tensors is not None:
+            request["tensors"] = tensors
+        else:
+            request["tensor"] = tensor
         payload = pickle.dumps(request, protocol=pickle.HIGHEST_PROTOCOL)
 
         try:
@@ -90,7 +92,7 @@ class HailoInferenceClient:
             # Reconnect and retry once
             self._sock = None
             self._connect()
-            return self.infer(model_name, tensor, _retried=True)
+            return self.infer(model_name, tensor, tensors, _retried=True)
 
         response = pickle.loads(resp_bytes)
         if not response.get("ok"):
