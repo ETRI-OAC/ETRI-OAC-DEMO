@@ -68,6 +68,7 @@ class FaceRecognitionNode(Node):
         # Latest frame for Qt display
         self.image_display = np.zeros((self.image_height, self.image_width, 3), dtype=np.uint8)
         self.status_text = "초기화 중..."
+        self.tts_log = []  # recent TTS messages for GUI display
         self.timer_flag = False
 
         # ROS 2
@@ -122,10 +123,12 @@ class FaceRecognitionNode(Node):
                                 if self.not_unknown_cnt > 5:
                                     final = self.recognition_name
                                     self.recognized_names.add(final)
-                                    self.tts_client.speak(text=f"{final} 님 안녕하세요.")
+                                    tts_msg = f"{final} 님 안녕하세요."
                                 else:
                                     final = "Unknown"
-                                    self.tts_client.speak(text="등록되지 않은 인물입니다.")
+                                    tts_msg = "등록되지 않은 인물입니다."
+                                self.tts_client.speak(text=tts_msg)
+                                self._add_tts_log(tts_msg)
                                 self.face_id_memory[body['id']] = final
                                 self.status_text = f"인식 완료: {final}"
                                 self.target_id += 1
@@ -136,7 +139,9 @@ class FaceRecognitionNode(Node):
                             self._draw_face_result(disp, bbox, body['id'], "인식 중...", 0.0, "not looking")
                             self.not_looking_cnt += 1
                             if self.not_looking_cnt > 60:
-                                self.tts_client.speak(text="카메라를 응시해주세요.")
+                                tts_msg = "카메라를 응시해주세요."
+                                self.tts_client.speak(text=tts_msg)
+                                self._add_tts_log(tts_msg)
                                 self.not_looking_cnt = 0
                                 self.face_recognition_cnt = 0
                                 self.not_unknown_cnt = 0
@@ -153,9 +158,28 @@ class FaceRecognitionNode(Node):
             self.status_text = "대기 중 (인물 감지 안됨)"
 
         self.image_display = disp
+        self.full_status = self._build_status()
         self.timer_flag = True
 
     # ── Helpers ────────────────────────────────────────────────────────────────
+
+    def _add_tts_log(self, msg):
+        self.tts_log.append(msg)
+        if len(self.tts_log) > 10:
+            self.tts_log = self.tts_log[-10:]
+
+    def _build_status(self):
+        lines = [f"[상태] {self.status_text}", ""]
+        if self.face_id_memory:
+            lines.append("[인식 결과]")
+            for bid, name in self.face_id_memory.items():
+                lines.append(f"  ID {bid}: {name}")
+            lines.append("")
+        if self.tts_log:
+            lines.append("[음성 안내]")
+            for msg in self.tts_log:
+                lines.append(f"  🔊 {msg}")
+        return "\n".join(lines)
 
     def _filter_bodies(self, bodies, max_dist=3.0):
         return [b for b in bodies
@@ -232,7 +256,7 @@ class FaceRecognitionThread(QThread):
             if self.node.timer_flag:
                 self.node.timer_flag = False
                 self.frame_signal.emit(self.node.image_display.copy())
-                self.status_signal.emit(self.node.status_text)
+                self.status_signal.emit(self.node.full_status)
 
 
 class FaceRecognitionWindow(QWidget):
