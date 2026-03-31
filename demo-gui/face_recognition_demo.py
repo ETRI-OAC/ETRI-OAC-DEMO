@@ -16,6 +16,7 @@ sys.path.append(os.path.join(PROJECT_ROOT, 'oak-camera'))
 
 from clients.zed_client import ZedClient
 from clients.face_recognition_client import FaceRecognitionClient
+from clients.tts_client import TTSClient
 from clients.body_tracking_visualizer import visualize_bodies_2d
 from utils.pid import PIDControllerClass
 
@@ -36,11 +37,12 @@ def bgr_to_pixmap(image: np.ndarray) -> QPixmap:
 
 
 class FaceRecognitionNode(Node):
-    def __init__(self, zed_client: ZedClient, face_client: FaceRecognitionClient):
+    def __init__(self, zed_client: ZedClient, face_client: FaceRecognitionClient, tts_client: TTSClient):
         super().__init__('face_recognition_demo')
 
         self.zed_client = zed_client
         self.face_client = face_client
+        self.tts_client = tts_client
 
         self.image_width = zed_client.image_shape[1]
         self.image_height = zed_client.image_shape[0]
@@ -120,8 +122,10 @@ class FaceRecognitionNode(Node):
                                 if self.not_unknown_cnt > 5:
                                     final = self.recognition_name
                                     self.recognized_names.add(final)
+                                    self.tts_client.speak(text=f"{final} 님 안녕하세요.")
                                 else:
                                     final = "Unknown"
+                                    self.tts_client.speak(text="등록되지 않은 인물입니다.")
                                 self.face_id_memory[body['id']] = final
                                 self.status_text = f"인식 완료: {final}"
                                 self.target_id += 1
@@ -132,6 +136,7 @@ class FaceRecognitionNode(Node):
                             self._draw_face_result(disp, bbox, body['id'], "인식 중...", 0.0, "not looking")
                             self.not_looking_cnt += 1
                             if self.not_looking_cnt > 60:
+                                self.tts_client.speak(text="카메라를 응시해주세요.")
                                 self.not_looking_cnt = 0
                                 self.face_recognition_cnt = 0
                                 self.not_unknown_cnt = 0
@@ -277,7 +282,8 @@ def main():
         sys.exit(1)
 
     face_client = FaceRecognitionClient()
-    node = FaceRecognitionNode(zed_client, face_client)
+    tts_client = TTSClient()
+    node = FaceRecognitionNode(zed_client, face_client, tts_client)
 
     app = QApplication(sys.argv)
     window = FaceRecognitionWindow(node)
