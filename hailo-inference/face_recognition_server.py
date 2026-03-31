@@ -106,17 +106,6 @@ def recognize_face():
                 "error": f"Image decoding error: {str(e)}"
             }), 400
         
-        # Parse optional landmarks (from YOLO keypoints)
-        landmarks = data.get('landmarks', None)
-        landmarks_5 = None
-        if landmarks is not None:
-            try:
-                landmarks_5 = np.array(landmarks, dtype=np.float32)
-                if landmarks_5.shape != (5, 2):
-                    landmarks_5 = None
-            except Exception:
-                landmarks_5 = None
-
         # Perform face recognition
         if recognizer is None:
             return jsonify({
@@ -124,34 +113,12 @@ def recognize_face():
                 "error": "Face recognizer not initialized"
             }), 500
 
-        lmk_info = f"landmarks={'yes' if landmarks_5 is not None else 'no'}"
-
-        # Debug: save first received image + landmarks for inspection
-        import os
-        debug_dir = "/tmp/face_debug"
-        os.makedirs(debug_dir, exist_ok=True)
-        debug_count_file = os.path.join(debug_dir, "count.txt")
-        count = 0
-        if os.path.exists(debug_count_file):
-            count = int(open(debug_count_file).read().strip())
-        if count < 3:  # save first 3
-            cv2.imwrite(f"{debug_dir}/crop_{count}.jpg", face_image)
-            if landmarks_5 is not None:
-                np.save(f"{debug_dir}/lmks_{count}.npy", landmarks_5)
-                # Also save aligned face
-                from face_landmarks import align_face
-                aligned = align_face(face_image, landmarks_5)
-                cv2.imwrite(f"{debug_dir}/aligned_{count}.jpg", aligned)
-            with open(debug_count_file, 'w') as f:
-                f.write(str(count + 1))
-            print(f"[DEBUG] Saved crop_{count}.jpg + aligned_{count}.jpg to {debug_dir}")
-
-        name, similarity = recognizer.recognize(face_image, landmarks_5=landmarks_5)
+        name, similarity = recognizer.recognize(face_image)
 
         if name != "Unknown":
-            print(f"[RECOGNIZE] {name} (similarity: {similarity:.3f}) | {lmk_info}")
+            print(f"[RECOGNIZE] {name} (similarity: {similarity:.3f})")
         else:
-            print(f"[RECOGNIZE] Unknown (best: {similarity:.3f}) | {lmk_info}")
+            print(f"[RECOGNIZE] Unknown (best: {similarity:.3f})")
 
         return jsonify({
             "success": True,
