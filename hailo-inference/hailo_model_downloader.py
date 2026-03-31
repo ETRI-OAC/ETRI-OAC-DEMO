@@ -30,9 +30,17 @@ KNOWN_MODELS = {
     "scrfd_10g": {
         "zoo_name": "scrfd_10g",
         "filename": "scrfd_10g.hef",
-        "description": "SCRFD face detection (10G FLOPs)",
+        "description": "SCRFD face detection (10G FLOPs, legacy)",
         "s3_urls": {
             "hailo10h": f"{_S3_BASE}/hailo10h/scrfd_10g.hef",
+        },
+    },
+    "arcface_mobilefacenet": {
+        "zoo_name": "arcface_mobilefacenet",
+        "filename": "arcface_mobilefacenet.hef",
+        "description": "ArcFace MobileFaceNet face embedding (112x112 → 512-dim)",
+        "s3_urls": {
+            "hailo10h": f"{_S3_BASE}/hailo10h/arcface_mobilefacenet.hef",
         },
     },
 }

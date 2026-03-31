@@ -67,7 +67,9 @@ if [ -d "$DB_DIR" ]; then
         if [ "$NEED_REGISTER" = true ]; then
             echo "[ENTRYPOINT] Registering $IMAGE_COUNT face(s) from $DB_DIR..."
             cd /root/workspace/hailo-inference
-            python3 register_face.py --no-hailo --directory "$DB_DIR" --database "$DB_FILE" || true
+            # Try Hailo first, fall back to CPU if server not available
+            python3 register_face.py --use-hailo-server --directory "$DB_DIR" --database "$DB_FILE" 2>/dev/null \
+                || python3 register_face.py --no-hailo --directory "$DB_DIR" --database "$DB_FILE" || true
             echo "[ENTRYPOINT] Face registration complete."
         else
             echo "[ENTRYPOINT] Face database up to date ($DB_FILE)."

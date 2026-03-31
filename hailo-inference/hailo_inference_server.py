@@ -3,7 +3,7 @@
 Hailo-10 Inference Server — centralized device scheduler.
 
 Owns the Hailo VDevice exclusively and serves inference requests from
-multiple clients (oak_server for pose, etc.)
+multiple clients (oak_server for pose, face_recognition for ArcFace embedding, etc.)
 via a lightweight TCP socket protocol.
 
 Protocol (size-prefixed pickle):
@@ -225,8 +225,8 @@ def main():
     parser.add_argument("--device-index", type=int, default=0,
                         help="Hailo device index (default: 0)")
     parser.add_argument("--models", type=str, nargs="*",
-                        default=["yolov8m_pose"],
-                        help="Models to load (default: yolov8m_pose)")
+                        default=["yolov8m_pose", "arcface_mobilefacenet"],
+                        help="Models to load (default: yolov8m_pose arcface_mobilefacenet)")
     args = parser.parse_args()
 
     if not is_hailo_available():
