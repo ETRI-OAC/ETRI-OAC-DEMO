@@ -227,8 +227,8 @@ def main():
     parser.add_argument("--device-index", type=int, default=0,
                         help="Hailo device index (default: 0)")
     parser.add_argument("--models", type=str, nargs="*",
-                        default=["yolov8m_pose", "scrfd_10g", "arcface_r50"],
-                        help="Models to load (default: yolov8m_pose scrfd_10g arcface_r50)")
+                        default=["yolov8m_pose", "scrfd_10g", "arcface_r50", "whisper_small_encoder"],
+                        help="Models to load (default: yolov8m_pose scrfd_10g arcface_r50 whisper_small_encoder)")
     args = parser.parse_args()
 
     if not is_hailo_available():
