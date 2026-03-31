@@ -125,6 +125,27 @@ def recognize_face():
             }), 500
 
         lmk_info = f"landmarks={'yes' if landmarks_5 is not None else 'no'}"
+
+        # Debug: save first received image + landmarks for inspection
+        import os
+        debug_dir = "/tmp/face_debug"
+        os.makedirs(debug_dir, exist_ok=True)
+        debug_count_file = os.path.join(debug_dir, "count.txt")
+        count = 0
+        if os.path.exists(debug_count_file):
+            count = int(open(debug_count_file).read().strip())
+        if count < 3:  # save first 3
+            cv2.imwrite(f"{debug_dir}/crop_{count}.jpg", face_image)
+            if landmarks_5 is not None:
+                np.save(f"{debug_dir}/lmks_{count}.npy", landmarks_5)
+                # Also save aligned face
+                from face_landmarks import align_face
+                aligned = align_face(face_image, landmarks_5)
+                cv2.imwrite(f"{debug_dir}/aligned_{count}.jpg", aligned)
+            with open(debug_count_file, 'w') as f:
+                f.write(str(count + 1))
+            print(f"[DEBUG] Saved crop_{count}.jpg + aligned_{count}.jpg to {debug_dir}")
+
         name, similarity = recognizer.recognize(face_image, landmarks_5=landmarks_5)
 
         if name != "Unknown":
