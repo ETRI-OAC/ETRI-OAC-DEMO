@@ -1,13 +1,14 @@
 """
 Face Recognition Demo
-- Camera feed with skeleton + face bbox overlay (PyQt5 window, no cv2.namedWindow)
-- Face recognition via Hailo inference server
+- Camera feed with skeleton + face bbox overlay (PyQt5 window)
+- Face recognition via Hailo inference server (async, non-blocking)
 - Pan-tilt servo tracking via ROS 2
 """
 import sys
 import os
 import cv2
 import time
+import threading
 import numpy as np
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -68,10 +69,16 @@ class FaceRecognitionNode(Node):
         self.not_looking_cnt = 0
         self.recognition_name = None
 
+        # Async recognition state
+        self._recog_lock = threading.Lock()
+        self._recog_busy = False
+        self._recog_result = None  # (name, similarity) or None
+        self._recog_body_id = None
+
         # Latest frame for Qt display
         self.image_display = np.zeros((self.image_height, self.image_width, 3), dtype=np.uint8)
         self.status_text = "초기화 중..."
-        self.tts_log = []  # recent TTS messages for GUI display
+        self.tts_log = []
         self.timer_flag = False
 
         # ROS 2
@@ -80,10 +87,23 @@ class FaceRecognitionNode(Node):
         self.pub_pantilt = self.create_publisher(Float64MultiArray, 'pantilt_command', 10)
         self.timer = self.create_timer(0.033, self._tick)  # ~30 Hz
 
-    # ── ROS callbacks ──────────────────────────────────────────────────────────
-
     def _pantilt_cb(self, msg):
         self.pantilt_state = list(msg.data)
+
+    def _recognize_async(self, face_img, lmks_list, body_id):
+        """Run face recognition in background thread."""
+        try:
+            result, _ = self.face_client.recognize(
+                face_img, landmarks=lmks_list, measure_time=False
+            )
+            name, sim = result['name'], result['similarity']
+        except Exception:
+            name, sim = "서버 연결 중...", 0.0
+
+        with self._recog_lock:
+            self._recog_result = (name, sim)
+            self._recog_body_id = body_id
+            self._recog_busy = False
 
     def _tick(self):
         image = self.zed_client.grab_image()
@@ -100,7 +120,6 @@ class FaceRecognitionNode(Node):
             untreated = [b for b in bodies_close if b['id'] not in self.face_id_memory]
             if untreated:
                 self.target_id = untreated[0]['id']
-            # Reset counters when target changes
             if self.target_id != self.target_id_prev:
                 self.target_id_prev = self.target_id
                 self.face_recognition_cnt = 0
@@ -108,56 +127,68 @@ class FaceRecognitionNode(Node):
                 self.not_looking_cnt = 0
                 self.recognition_name = None
 
+            # Check if async recognition returned a result
+            with self._recog_lock:
+                async_result = self._recog_result
+                async_body_id = self._recog_body_id
+                if async_result is not None:
+                    self._recog_result = None
+
+            # Process async result
+            if async_result is not None and async_body_id == self.target_id:
+                name, sim = async_result
+                if name != "서버 연결 중...":
+                    self.not_looking_cnt = 0
+                    self.face_recognition_cnt += 1
+                    if name != "Unknown":
+                        self.recognition_name = self.recognition_name or name
+                        self.not_unknown_cnt += 1
+                    if self.face_recognition_cnt > 30:
+                        if self.not_unknown_cnt > 5:
+                            final = self.recognition_name
+                            self.recognized_names.add(final)
+                            tts_msg = f"{final} 님 안녕하세요."
+                        else:
+                            final = "Unknown"
+                            tts_msg = "등록되지 않은 인물입니다."
+                        try:
+                            self.tts_client.speak(text=tts_msg)
+                        except Exception:
+                            pass
+                        self._add_tts_log(tts_msg)
+                        self.face_id_memory[async_body_id] = final
+                        self.status_text = f"인식 완료: {final}"
+                        self.target_id += 1
+                        self.face_recognition_cnt = 0
+                        self.not_unknown_cnt = 0
+                        self.recognition_name = None
+                else:
+                    self.status_text = "Face Recognition 서버 연결 대기 중..."
+
             for body in bodies_close:
                 face_img, bbox = self._crop_face(image, body)
                 if body['id'] == self.target_id:
                     if face_img is not None:
                         looking = self._is_looking(body)
                         if looking:
-                            # Extract YOLO keypoints as ArcFace landmarks
-                            lmks = coco17_to_arcface_landmarks(
-                                body['keypoints_2d'], bbox.tolist()
-                            )
-                            lmks_list = lmks.tolist() if lmks is not None else None
-                            try:
-                                result, _ = self.face_client.recognize(
-                                    face_img, landmarks=lmks_list, measure_time=False
-                                )
-                                name, sim = result['name'], result['similarity']
-                                connected = True
-                            except Exception:
-                                name, sim = "서버 연결 중...", 0.0
-                                connected = False
-                            self._draw_face_result(disp, bbox, body['id'], name, sim, "looking")
-                            if not connected:
-                                self.status_text = "Face Recognition 서버 연결 대기 중..."
-                                continue
-                            self.not_looking_cnt = 0
-                            self.face_recognition_cnt += 1
-                            if name != "Unknown":
-                                self.recognition_name = self.recognition_name or name
-                                self.not_unknown_cnt += 1
-                            if self.face_recognition_cnt > 30:
-                                if self.not_unknown_cnt > 5:
-                                    final = self.recognition_name
-                                    self.recognized_names.add(final)
-                                    tts_msg = f"{final} 님 안녕하세요."
-                                else:
-                                    final = "Unknown"
-                                    tts_msg = "등록되지 않은 인물입니다."
-                                try:
-                                    self.tts_client.speak(text=tts_msg)
-                                except Exception:
-                                    pass
-                                self._add_tts_log(tts_msg)
-                                self.face_id_memory[body['id']] = final
-                                self.status_text = f"인식 완료: {final}"
-                                self.target_id += 1
-                                self.face_recognition_cnt = 0
-                                self.not_unknown_cnt = 0
-                                self.recognition_name = None
+                            # Submit async recognition if not already busy
+                            with self._recog_lock:
+                                if not self._recog_busy:
+                                    self._recog_busy = True
+                                    lmks = coco17_to_arcface_landmarks(
+                                        body['keypoints_2d'], bbox.tolist()
+                                    )
+                                    lmks_list = lmks.tolist() if lmks is not None else None
+                                    threading.Thread(
+                                        target=self._recognize_async,
+                                        args=(face_img.copy(), lmks_list, body['id']),
+                                        daemon=True
+                                    ).start()
+                            self._draw_face_result(disp, bbox, body['id'],
+                                                   "인식 중...", 0.0, "looking")
                         else:
-                            self._draw_face_result(disp, bbox, body['id'], "인식 중...", 0.0, "not looking")
+                            self._draw_face_result(disp, bbox, body['id'],
+                                                   "인식 중...", 0.0, "not looking")
                             self.not_looking_cnt += 1
                             if self.not_looking_cnt > 60:
                                 tts_msg = "카메라를 응시해주세요."
@@ -267,7 +298,7 @@ class FaceRecognitionNode(Node):
 
 
 class FaceRecognitionThread(QThread):
-    frame_signal = pyqtSignal(object)   # numpy BGR image
+    frame_signal = pyqtSignal(object)
     status_signal = pyqtSignal(str)
 
     def __init__(self, node: FaceRecognitionNode):
@@ -288,25 +319,21 @@ class FaceRecognitionWindow(QWidget):
         super().__init__()
         self.setWindowTitle("Face Recognition Demo")
 
-        # Camera view
         self.camera_label = QLabel()
         self.camera_label.setAlignment(Qt.AlignCenter)
         self.camera_label.setMinimumSize(960, 540)
 
-        # Status panel
         self.status_label = QLabel("초기화 중...")
         self.status_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self.status_label.setStyleSheet("font-size: 16px; padding: 10px;")
         self.status_label.setMinimumWidth(300)
         self.status_label.setWordWrap(True)
 
-        # Layout
         h = QHBoxLayout()
         h.addWidget(self.camera_label, stretch=3)
         h.addWidget(self.status_label, stretch=1)
         self.setLayout(h)
 
-        # Thread
         self.thread = FaceRecognitionThread(node)
         self.thread.frame_signal.connect(self._update_frame)
         self.thread.status_signal.connect(self.status_label.setText)
