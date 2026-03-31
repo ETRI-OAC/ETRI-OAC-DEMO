@@ -11,7 +11,7 @@ DOCKER_COMPOSE_FILE="docker-compose-face.yaml"
 # When hailo_inference_server is running (recommended), use --use-hailo-server
 # to share the Hailo device with oak_server and other services.
 # Without it, face_recognition opens VDevice directly (may conflict with oak_server).
-COMMAND="cd /root/workspace/hailo-inference && python3 face_recognition_server.py --use-hailo-server --warmup 5"
+COMMAND="cd /root/workspace/hailo-inference && python3 face_recognition_server.py --use-hailo-server --warmup 5 --threshold 0.45"
 
 
 # Must run compose from docker dir so volume ../../ resolves to project root
