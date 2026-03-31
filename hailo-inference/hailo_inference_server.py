@@ -105,6 +105,8 @@ class HailoInferenceServer:
         infer_model = self._vdevice.create_infer_model(hef_path, network_name)
         infer_model.set_batch_size(1)
 
+        for inp in infer_model.inputs:
+            infer_model.input(inp.name).set_format_type(self._FormatType.FLOAT32)
         for out in infer_model.outputs:
             infer_model.output(out.name).set_format_type(self._FormatType.FLOAT32)
 
