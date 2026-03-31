@@ -40,19 +40,22 @@ def coco17_to_arcface_landmarks(keypoints_2d: list, bbox: list) -> Optional[np.n
     if any(p[0] <= 0 or p[1] <= 0 for p in [nose, l_eye, r_eye]):
         return None
 
-    # Synthesize mouth corners from eye/nose geometry
+    # Synthesize mouth corners from eye/nose geometry.
+    # Coefficients derived from ArcFace 112x112 reference landmarks:
+    #   y=1.02 (mouth is ~1x nose-to-eye distance below nose)
+    #   lx=-0.41, rx=0.42 (mouth corners slightly wider than eye centers)
     eye_center_y = (l_eye[1] + r_eye[1]) / 2
     nose_to_eye = nose[1] - eye_center_y
     if nose_to_eye <= 0:
         return None
-    mouth_y = nose[1] + nose_to_eye * 0.6
+    mouth_y = nose[1] + nose_to_eye * 1.02
 
     eye_span = abs(r_eye[0] - l_eye[0])
     if eye_span < 5:  # eyes too close — bad detection
         return None
     eye_center_x = (l_eye[0] + r_eye[0]) / 2
-    l_mouth = np.array([eye_center_x - eye_span * 0.35, mouth_y], dtype=np.float32)
-    r_mouth = np.array([eye_center_x + eye_span * 0.35, mouth_y], dtype=np.float32)
+    l_mouth = np.array([eye_center_x - eye_span * 0.41, mouth_y], dtype=np.float32)
+    r_mouth = np.array([eye_center_x + eye_span * 0.42, mouth_y], dtype=np.float32)
 
     # Convert to crop-local coordinates
     x1, y1 = float(bbox[0]), float(bbox[1])
