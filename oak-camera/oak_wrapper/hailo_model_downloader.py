@@ -12,7 +12,7 @@ from typing import Optional
 
 # Default model directory: <project_root>/hailo_models/
 # oak_wrapper/ → oak-camera/ → project_root/
-DEFAULT_MODEL_DIR = Path(__file__).parent.parent.parent / "hailo_models"
+DEFAULT_MODEL_DIR = Path(__file__).parent.parent / "hailo_models"
 
 # S3 base URL for pre-compiled HEF files
 _S3_BASE = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v5.2.0"
@@ -30,9 +30,25 @@ KNOWN_MODELS = {
     "scrfd_10g": {
         "zoo_name": "scrfd_10g",
         "filename": "scrfd_10g.hef",
-        "description": "SCRFD face detection (10G FLOPs)",
+        "description": "SCRFD face detection (10G FLOPs, legacy)",
         "s3_urls": {
             "hailo10h": f"{_S3_BASE}/hailo10h/scrfd_10g.hef",
+        },
+    },
+    "arcface_mobilefacenet": {
+        "zoo_name": "arcface_mobilefacenet",
+        "filename": "arcface_mobilefacenet.hef",
+        "description": "ArcFace MobileFaceNet face embedding (112x112 → 512-dim, lightweight)",
+        "s3_urls": {
+            "hailo10h": f"{_S3_BASE}/hailo10h/arcface_mobilefacenet.hef",
+        },
+    },
+    "arcface_r50": {
+        "zoo_name": "arcface_r50",
+        "filename": "arcface_r50.hef",
+        "description": "ArcFace ResNet-50 face embedding (112x112 → 512-dim, high accuracy)",
+        "s3_urls": {
+            "hailo10h": f"{_S3_BASE}/hailo10h/arcface_r50.hef",
         },
     },
 }
