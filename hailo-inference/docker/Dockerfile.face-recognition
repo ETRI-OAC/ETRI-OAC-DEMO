@@ -43,6 +43,9 @@ RUN --mount=type=bind,source=.,target=/ctx \
         echo "[HAILO] No hailort .deb found, face detection on CPU only"; \
     fi
 
+# Pre-download InsightFace buffalo_l model (avoids runtime download)
+RUN python3 -c "from insightface.app import FaceAnalysis; FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])"
+
 # Create directories for models
 RUN mkdir -p /workspace/models /workspace/database
 
